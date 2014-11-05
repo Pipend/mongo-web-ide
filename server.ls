@@ -6,7 +6,8 @@ vm = require \vm
 
 app = express!
     ..set \views, __dirname + \/
-    ..set 'view engine', \jade
+    ..engine \.html, (require \ejs).__express
+    ..set 'view engine', \ejs    
     ..use (require \cookie-parser)!
     ..use "/ace-builds" express.static "#__dirname/ace-builds"
     ..use "/public" express.static "#__dirname/public"
@@ -20,7 +21,7 @@ console.log "successfully connected to #{config.mongo}"
 mongo-context = {ObjectID} <<< require \prelude-ls
 
 # load the IDE
-app.get \/, (req, res)-> res.render \public/index.jade
+app.get \/, (req, res)-> res.render \public/index.html
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
