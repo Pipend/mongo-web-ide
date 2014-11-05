@@ -37,8 +37,6 @@ module.exports = config.all <<< config[config.env] <<< env: config.env
 
 * paste the following script in the IDE : 
 ```
-$match: $ip: $ne: \80.227.47.62
-
 $project:
   ip: 1
   country: 1
