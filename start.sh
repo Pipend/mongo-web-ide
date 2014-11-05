@@ -1,0 +1,1 @@
+sudo nodemon --exec "lsc server.ls" -e ls 

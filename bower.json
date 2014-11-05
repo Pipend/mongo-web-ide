@@ -1,0 +1,20 @@
+{
+  "name": "mongo-web-ide",
+  "version": "0.0.0",
+  "authors": [
+    "Furqan Zafar (Mac Pro) <fruzi89@gmail.com>"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "jquery": "~2.1.1",
+    "prelude-browser-min": "http://www.preludels.com/prelude-browser-min.js",
+    "ace-builds": "~1.1.7"
+  }
+}
