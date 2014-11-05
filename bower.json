@@ -17,6 +17,8 @@
     "prelude-browser-min": "http://www.preludels.com/prelude-browser-min.js",
     "ace-builds": "~1.1.7",
     "master": "https://github.com/RobertWHurst/KeyboardJS/archive/master.zip",
-    "KeyboardJS": "~0.4.2"
+    "KeyboardJS": "~0.4.2",
+    "nvd3": "~1.1.15-beta",
+    "LiveScript": "https://github.com/gkz/LiveScript.git#~1.3.1"
   }
 }

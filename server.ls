@@ -51,7 +51,10 @@ app.post \/query, (req, res)->
         res.status 500
         res.end err
 
-    [err, query] = compile-and-execute-livescript req.body, {ObjectID} <<< require \prelude-ls
+    [err, query] = compile-and-execute-livescript req.body, {
+        object-id: ObjectID
+        timestamp-to-day: (timestamp-key)-> $divide: [$subtract: [timestamp-key, $mod: [timestamp-key, 86400000]], 86400000]
+    } <<< require \prelude-ls
     return die err if !!err
 
     (err, result) <- db.collection \events .aggregate query

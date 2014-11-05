@@ -1,4 +1,5 @@
 {map} = require \prelude-ls
+{compile} = require \LiveScript
 
 create-livescript-editor = (element-id)->
     ace.edit element-id
@@ -21,6 +22,38 @@ execute-query = (query, callback)->
         ..done (response)-> callback null, response
         ..fail ({response-text}) -> callback response-text, null
 
+present-result = (result, presentation-code)->
+
+    json = -> $ \#result .html JSON.stringify result, null, 4
+
+    plot-timeseries = ->
+
+        <- nv.addGraph 
+
+        chart = nv.models.line-chart!
+            .x (.0)
+            .y (.1)
+        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            
+        d3.select \svg .datum result .call chart
+
+    try 
+        eval compile presentation-code, {bare: true}
+    catch error
+        return error
+
+    return null
+
+transform-result = (result, transformation-code)->
+
+    try 
+        transformed-result = eval compile transformation-code, {bare: true}
+    catch err
+        return [err, null]
+
+    return [null, transformed-result]
+
+
 # temprory measure to prevent loss of work
 window.onbeforeunload = -> return "You have NOT saved your query. Stop and save if your want to keep your query."
 
@@ -30,6 +63,7 @@ $ ->
     # create the editors
     query-editor = create-livescript-editor \editor
     transformer = create-livescript-editor \transformer
+    presenter = create-livescript-editor \presenter
 
     # setup auto-complete
     lang-tools = ace.require \ace/ext/language_tools
@@ -39,14 +73,14 @@ $ ->
         $ \#preloader .remove-class \hide
 
         (err, result) <- execute-query query-editor.get-value!
-        if !!err
-            $ \#preloader .add-class \hide
-            return $ \#result .html "query-editor error #{err}"
+        $ \#preloader .add-class \hide
+        return $ \#result .html "query-editor error #{err}" if !!err
 
-        $.post \/transform, JSON.stringify {transformation: transformer.get-value!, result}
-            ..done (response)-> $ \#result .html response
-            ..fail ({response-text})-> $ \#result .html "transformer error #{response-text}"
-            ..always -> $ \#preloader .add-class \hide        
+        [err, result] = transform-result (JSON.parse result), transformer.get-value!
+        return $ \#result .html "transformer error #{err}" if !!err
+
+        err = present-result result, presenter.get-value!
+        return $ \#result .html "presenter error #{err}" if !!err
 
 
     # execute the query on button click or hot key (command + enter)
