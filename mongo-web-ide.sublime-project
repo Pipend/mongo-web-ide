@@ -4,7 +4,8 @@
 		{
 			"follow_symlinks": true,
 			"path": ".",
-			"file_exclude_patterns": ["public/index.js", "public/index.css"]
+			"file_exclude_patterns": ["public/index.js", "public/index.css"],
+			"folder_exclude_patterns": ["node_modules"]
 		}
 	]
 }
