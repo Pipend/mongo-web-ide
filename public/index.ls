@@ -30,6 +30,20 @@ presentation-context = {
             
         d3.select \svg .datum result .call chart
 
+    plot-stacked-area: (result) ->
+        <- nv.add-graph 
+
+        chart = nv.models.stacked-area-chart!
+            .x (.0)
+            .y (.1)
+            .use-interactive-guideline true
+            .show-controls true
+            .clip-edge true
+
+        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            
+        d3.select \svg .datum result .call chart        
+
 }
 
 # creates, configures & returns a new instance of ace-editor
