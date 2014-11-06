@@ -1,5 +1,6 @@
 config = require \./config
 express = require \express
+fs = require \fs
 vm = require \vm
 {MongoClient, ObjectID} = require \mongodb
 {compile} = require \LiveScript
@@ -41,8 +42,21 @@ compile-and-execute-livescript = (livescript-code, context)->
 
     [null, result]
 
-# load the IDE
-app.get \/, (req, res)-> res.render \public/index.html
+# load a new document
+app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, query: "", transformation-code: \@result, presentation-code: \@json!}
+
+# load an existing document
+app.get "/:queryId(\\d+)", (req, res)->
+
+    die = (err)->
+        res.status 500
+        res.end err.to-string!
+
+    {query-id} = req.params
+
+    (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
+    return die err if !!err
+    res.render \public/index.html, (JSON.parse data) <<< {query-id: parse-int query-id}
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
@@ -61,19 +75,20 @@ app.post \/query, (req, res)->
     return die "mongodb error: #{err.to-string!}" if !!err
     res.end JSON.stringify result, null, 4
 
+# save code to tmp directory
+app.post \/save, (req, res)->
 
-app.post \/transform, (req, res)->
+    # generate a query-id (if not present in the request)
+    {query-id} = JSON.parse req.body
+    query-id = new Date!.get-time! if !query-id
 
-    die = (err)->
+    # save the document as json & return the query-id
+    (err) <- fs.write-file "./tmp/#{query-id}.json", req.body
+    if !!err
         res.status 500
-        res.end err
-
-    {result, transformation} = JSON.parse req.body
-
-    [err, transformed-data] = compile-and-execute-livescript transformation, {result: JSON.parse result} <<< require \prelude-ls
-    return die err if !!err
-
-    res.end JSON.stringify transformed-data, null, 4
+        res.end JSON.stringify [err, null]
+        return
+    res.end JSON.stringify [null, query-id]
 
 app.listen config.port
 console.log "listening on port #{config.port}"

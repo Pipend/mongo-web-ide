@@ -1,8 +1,9 @@
 *.DS_Store
+*.css
+*.js
 config.ls
 mongo-web-ide.sublime-workspace
 node_modules/
 npm-debug.log
 public/lib
-*.js
-*.css
+tmp/

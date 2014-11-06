@@ -2,25 +2,34 @@
 <html lang="en">
     <head>
       <title>Mongo Web IDE</title>
-      <link rel="stylesheet" href="/public/index.css">      
+      <link rel="stylesheet" href="/public/index.css">
       <link rel="stylesheet" href="/public/lib/nvd3/nv.d3.css">
+      <script type="text/javascript">
+        var documentProperties = {
+          queryId: <%= queryId %>
+        };
+      </script>
       <script src="/public/lib/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
-      <script src="/public/lib/ace-builds/src-noconflict/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>
+      <script src="/public/lib/ace-builds/src-noconflict/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>      
       <script src="/public/lib/jquery/dist/jquery.min.js" type="text/javascript"></script>
       <script src="/public/lib/KeyboardJS/keyboard.js" type="text/javascript"></script>
       <script src="/public/lib/LiveScript/browser/livescript.js" type="text/javascript"></script>
-      <script src="/public/lib/prelude-browser-min/index.js" type="text/javascript"></script>
       <script src="/public/lib/d3/d3.js" type="text/javascript"></script>
       <script src="/public/lib/nvd3/nv.d3.js" type="text/javascript"></script>
+      <script src="/public/lib/prelude-browser-min/index.js" type="text/javascript"></script>
       <script src="/public/index.js" type="text/javascript"></script>
     </head>
     <body>
-      <div id="editor"></div>
-      <div id="transformer">result</div>
-      <div id="presenter">json!</div>
-      <div id="execute-mongo-query" class="button">Execute</div>
-      <div id="preloader" class="hide"></div>
-      <pre id="result"></pre>
-      <svg width="640px" height="640px"></svg>
+      <div>
+        <div id="query-editor"><%= query %></div>
+        <div id="transformer"><%= transformationCode %></div>
+        <div id="presenter"><%= presentationCode %></div>
+        <div id="execute-mongo-query" class="button">Execute</div>
+        <div id="preloader" class="hide"></div>
+      </div>
+      <div>
+        <pre id="result"></pre>
+        <svg width="640px" height="640px"></svg>
+      </div>
     </body>
 </html>
