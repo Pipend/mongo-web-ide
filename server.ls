@@ -43,7 +43,7 @@ compile-and-execute-livescript = (livescript-code, context)->
     [null, result]
 
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, query: "", transformation-code: \@result, presentation-code: \@json!}
+app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, query: "", transformation-code: \result, presentation-code: "json result"}
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->

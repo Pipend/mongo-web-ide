@@ -1,17 +1,27 @@
-{map} = require \prelude-ls
+{fold, keys, map} = require \prelude-ls
 {compile} = require \LiveScript
 
-transformation-context = {
+# all functions defined here are accessibly by the transformation code
+transformation-context = {}
 
-}
-
+# all functions defined here are accessibly by the presentation code
 presentation-context = {
 
     json: (result)-> $ \#result .html JSON.stringify result, null, 4
 
+    plot-histogram: (result)->
+
+        <- nv.add-graph
+
+        chart = nv.models.multi-bar-chart!
+            .x (.label)
+            .y (.value)
+
+        d3.select \svg .datum result .call chart
+
     plot-timeseries: (result)->
 
-        <- nv.addGraph 
+        <- nv.add-graph 
 
         chart = nv.models.line-chart!
             .x (.0)
@@ -22,12 +32,14 @@ presentation-context = {
 
 }
 
+# creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
     ace.edit element-id
         ..set-options {enable-basic-autocompletion: true}
         ..set-theme \ace/theme/monokai
         ..get-session!.set-mode \ace/mode/livescript
 
+# makes a POST request the server and returns the result of the mongo query
 execute-query = (query, callback)->
 
     lines = query.split \\n
@@ -43,6 +55,7 @@ execute-query = (query, callback)->
         ..done (response)-> callback null, response
         ..fail ({response-text}) -> callback response-text, null
 
+# compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
     livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
     try 
@@ -50,18 +63,15 @@ run-livescript = (context, result, livescript)->
     catch error 
         return [error, null]
 
+# makes a POST request to the server to save the current document-object
 save = (document-object, callback)->
-    save-request-promise = $.post \/save, JSON.stringify document-object
+    save-request-promise = $.post \/save, JSON.stringify document-object, null, 4
         ..done (response)-> 
             [err, query-id] = JSON.parse response
             return callback err, null if !!err
             callback null, query-id
         ..fail ({response-text})-> callback response-text, null
             
-
-# temprory measure to prevent loss of work
-window.onbeforeunload = -> return "You have NOT saved your query. Stop and save if your want to keep your query."
-
 # on dom ready
 $ ->
 
@@ -75,10 +85,12 @@ $ ->
 
     execute-query-and-display-results = ->
 
+        # clean existing results
         $ \#preloader .remove-class \hide
         $ \#result .html ""
         $ "svg" .empty!
 
+        # query, transform & plot 
         {query, transformation-code, presentation-code} = get-document!
 
         (err, result) <- execute-query query
@@ -93,28 +105,52 @@ $ ->
 
     get-document = -> {query-id: window.document-properties.query-id, query: query-editor.get-value!, transformation-code: transformer.get-value!, presentation-code: presenter.get-value!}
 
-    auto-save = ->
-        (err, query-id) <- save get-document!
-        console.log err if !!err        
-        set-timeout auto-save, 5000
+    # returns noop if the document hasn't changed since the last save
+    get-save-function = (->        
+        last-saved-document = if document-properties.query-id is null then {} else get-document!
+        -> 
+            current-document = get-document!
+            return [false, $.noop] if current-document `is-equal-to-object` last-saved-document
 
-    # auto save the document if it has a query-id
-    set-timeout auto-save, 5000 if !!document-properties.query-id
+            # post the document object to server
+            [
+                true
+                ->        
+                    (err, query-id) <- save current-document
+                    return console.log err if !!err
 
+                    last-saved-document := current-document
+
+                    if window.document-properties.query-id is null
+                        window.onbeforeunload = $.noop!
+                        window.location.href += "#{query-id}"
+            ]
+    )!
+
+    # two objects are equal if they have the same keys & values
+    is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
+        
     # execute the query on button click or hot key (command + enter)
     KeyboardJS.on "command + enter", execute-query-and-display-results
     $ \#execute-mongo-query .on \click, execute-query-and-display-results
 
     # save the document
-    KeyboardJS.on "command + s", (e)->        
-        save get-document!, (err, query-id) -> 
-            return if !!err
-            if window.document-properties.query-id is null
-                window.onbeforeunload = $.noop!
-                window.location.href += "#{query-id}"
+    KeyboardJS.on "command + s", (e)->
+
+        [,save-function] = get-save-function!
+        save-function!
+
+        # prevent default behavious of displaying the save-dialog
         e.prevent-default!
         e.stop-propagation!
         return false
+
+    # temprory measure to prevent loss of work
+    window.onbeforeunload = -> 
+        [should-save] = get-save-function!
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
+        
+
 
 
 
