@@ -58,11 +58,8 @@ presentation-context = {
         chart.tooltipContent (key, , , {point}) -> 
             (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
 
-        
         chart.x-axis.tick-format x-axis-format
         chart.y-axis.tick-format y-axis-format
-
-
 
         d3.select \svg .datum result .call chart
 }
