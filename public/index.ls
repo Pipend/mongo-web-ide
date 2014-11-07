@@ -30,7 +30,8 @@ presentation-context = {
             
         d3.select \svg .datum result .call chart
 
-    plot-stacked-area: (result) ->
+    plot-stacked-area: (result)->
+
         <- nv.add-graph 
 
         chart = nv.models.stacked-area-chart!
@@ -42,7 +43,7 @@ presentation-context = {
 
         chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
             
-        d3.select \svg .datum result .call chart        
+        d3.select \svg .datum result .call chart
 
 }
 
@@ -55,17 +56,16 @@ create-livescript-editor = (element-id)->
         ..get-session!.set-mode \ace/mode/livescript
 
 # makes a POST request the server and returns the result of the mongo query
+# Note: the request is made only if there is a change in the query
 execute-query = (->
 
     previous-request = {}
 
     (query, callback)->
 
-        return callback previous-request.err, previous-request.response if query == previous-request.query
-            
+        return callback previous-request.err, previous-request.result if query == previous-request.query
 
         lines = query.split \\n
-
         lines = [0 til lines.length] 
             |> map (i)-> 
                 line = lines[i]
@@ -75,11 +75,11 @@ execute-query = (->
 
         query-result-promise = $.post \/query, "[#{lines.join '\n'}]"
             ..done (response)-> 
-                previous-request <<< {err: null, response}
+                previous-request <<< {err: null, result: response}
                 callback null, response
 
             ..fail ({response-text}) -> 
-                previous-request <<< {err: response-text, response: null}
+                previous-request <<< {err: response-text, result: null}
                 callback response-text, null
 
         previous-request <<< {query}
