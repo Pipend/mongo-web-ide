@@ -37,23 +37,41 @@ create-livescript-editor = (element-id)->
     ace.edit element-id
         ..set-options {enable-basic-autocompletion: true}
         ..set-theme \ace/theme/monokai
+        ..set-show-print-margin false
         ..get-session!.set-mode \ace/mode/livescript
 
 # makes a POST request the server and returns the result of the mongo query
-execute-query = (query, callback)->
+execute-query = (->
 
-    lines = query.split \\n
+    previous-request = {}
 
-    lines = [0 til lines.length] 
-        |> map (i)-> 
-            line = lines[i]
-            line = (if i > 0 then "}," else "") + \{ + line if line.0 == \$
-            line += \} if i == lines.length - 1
-            line
+    (query, callback)->
 
-    query-result-promise = $.post \/query, "[#{lines.join '\n'}]"
-        ..done (response)-> callback null, response
-        ..fail ({response-text}) -> callback response-text, null
+        return callback previous-request.err, previous-request.response if query == previous-request.query
+            
+
+        lines = query.split \\n
+
+        lines = [0 til lines.length] 
+            |> map (i)-> 
+                line = lines[i]
+                line = (if i > 0 then "}," else "") + \{ + line if line.0 == \$
+                line += \} if i == lines.length - 1
+                line
+
+        query-result-promise = $.post \/query, "[#{lines.join '\n'}]"
+            ..done (response)-> 
+                previous-request <<< {err: null, response}
+                callback null, response
+
+            ..fail ({response-text}) -> 
+                previous-request <<< {err: response-text, response: null}
+                callback response-text, null
+
+        previous-request <<< {query}
+
+
+)!
 
 # compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
@@ -81,7 +99,13 @@ $ ->
     presenter = create-livescript-editor \presenter
 
     # setup auto-complete
-    lang-tools = ace.require \ace/ext/language_tools    
+    lang-tools = ace.require \ace/ext/language_tools
+    
+    # (ace.require \ace/ext/language_tools).addCompleter {
+    #     getCompletions: (editor, session, pos, prefix, callback)->
+    #         return callback null, [] if prefix.length === 0
+    #         callback null, [{name: "", value: "", score: 0, meta: ""}]
+    # }
 
     execute-query-and-display-results = ->
 
@@ -109,10 +133,13 @@ $ ->
     get-save-function = (->        
         last-saved-document = if document-properties.query-id is null then {} else get-document!
         -> 
+
+            # if there are no changes to the document return noop as the save function
             current-document = get-document!
             return [false, $.noop] if current-document `is-equal-to-object` last-saved-document
 
-            # post the document object to server
+            # if the document has changed since the last save then 
+            # return a function that will POST the new document to the server
             [
                 true
                 ->        
@@ -145,7 +172,7 @@ $ ->
         e.stop-propagation!
         return false
 
-    # temprory measure to prevent loss of work
+    # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
