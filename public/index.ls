@@ -160,7 +160,7 @@ $ ->
         [err, result] = run-livescript presentation-context, result, presentation-code
         return $ \#result .html "presenter error #{err}" if !!err
 
-    get-document = -> {query-id: window.document-properties.query-id, query: query-editor.get-value!, transformation-code: transformer.get-value!, presentation-code: presenter.get-value!}
+    get-document = -> {query-id: window.document-properties.query-id, name: $ \#name .val!, query: query-editor.get-value!, transformation-code: transformer.get-value!, presentation-code: presenter.get-value!}
 
     # returns noop if the document hasn't changed since the last save
     get-save-function = (->        

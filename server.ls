@@ -1,7 +1,9 @@
+async = require \async
 config = require \./config
 express = require \express
 fs = require \fs
 vm = require \vm
+{map} = require \prelude-ls
 {MongoClient, ObjectID} = require \mongodb
 {compile} = require \LiveScript
 
@@ -42,37 +44,53 @@ compile-and-execute-livescript = (livescript-code, context)->
 
     [null, result]
 
+die = (res, err)->
+    res.status 500
+    res.end err
+
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, query: "", transformation-code: \result, presentation-code: "json result"}
+app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, name: "", query: "", transformation-code: \result, presentation-code: "json result"}
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
 
-    die = (err)->
-        res.status 500
-        res.end err.to-string!
-
     {query-id} = req.params
 
     (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
-    return die err if !!err
-    res.render \public/index.html, (JSON.parse data) <<< {query-id: parse-int query-id}
+    return die res, err if !!err
+    res.render \public/index.html, {name: ""} <<< (JSON.parse data) <<< {query-id: parse-int query-id}
+
+# list all the queries
+app.get \/list, (req, res)->
+
+    # get the files from tmp directory
+    (err, files) <- fs.readdir \./tmp
+    return die res, err if !!err
+
+    # read each file 
+    (err, result) <- async.map do 
+        files
+        (file, callback)->
+
+            (err, data) <- fs.read-file "./tmp/#{file}", \utf8            
+            return callback err, null if !!err 
+
+            callback null, JSON.parse data
+
+    res.render \public/list.html, {queries: result |> map ({query-id, name})-> {query-id, description: "#{name} (#{query-id})"}}
+
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
     
-    die = (err)->
-        res.status 500
-        res.end err
-
     [err, query] = compile-and-execute-livescript req.body, {
         object-id: ObjectID
         timestamp-to-day: (timestamp-key)-> $divide: [$subtract: [timestamp-key, $mod: [timestamp-key, 86400000]], 86400000]
     } <<< require \prelude-ls
-    return die err if !!err
+    return die res, err if !!err
 
     (err, result) <- db.collection \events .aggregate query
-    return die "mongodb error: #{err.to-string!}" if !!err
+    return die res, "mongodb error: #{err.to-string!}" if !!err
     res.end JSON.stringify result, null, 4
 
 # save code to tmp directory
