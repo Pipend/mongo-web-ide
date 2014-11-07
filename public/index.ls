@@ -3,6 +3,7 @@
 
 # all functions defined here are accessibly by the transformation code
 transformation-context = {}
+chart = null
 
 # all functions defined here are accessibly by the presentation code
 presentation-context = {
@@ -13,7 +14,7 @@ presentation-context = {
 
         <- nv.add-graph
 
-        chart = nv.models.multi-bar-chart!
+        chart := nv.models.multi-bar-chart!
             .x (.label)
             .y (.value)
 
@@ -23,7 +24,7 @@ presentation-context = {
 
         <- nv.add-graph 
 
-        chart = nv.models.line-chart!
+        chart := nv.models.line-chart!
             .x (.0)
             .y (.1)
         chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
@@ -34,7 +35,7 @@ presentation-context = {
 
         <- nv.add-graph 
 
-        chart = nv.models.stacked-area-chart!
+        chart := nv.models.stacked-area-chart!
             .x (.0)
             .y (.1)
             .useInteractiveGuideline true
@@ -48,7 +49,7 @@ presentation-context = {
     plot-scatter: (result, {tooltip, x-axis-format = d3.format('.02f'), y-axis-format = d3.format('.02f')}) ->
         <- nv.add-graph
 
-        chart = nv.models.scatter-chart!
+        chart := nv.models.scatter-chart!
             .showDistX true
             .showDistY true
             .transitionDuration 350
@@ -65,6 +66,11 @@ presentation-context = {
 
         d3.select \svg .datum result .call chart
 }
+
+# resize the chart on window resize
+nv.utils.windowResize -> 
+    if !!chart
+        chart.update!
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
