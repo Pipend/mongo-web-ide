@@ -37,7 +37,7 @@ presentation-context = {
         chart = nv.models.stacked-area-chart!
             .x (.0)
             .y (.1)
-            .use-interactive-guideline true
+            .useInteractiveGuideline true
             .show-controls true
             .clip-edge true
 
@@ -45,6 +45,25 @@ presentation-context = {
             
         d3.select \svg .datum result .call chart
 
+    plot-scatter: (result, {tooltip, x-axis-format = d3.format('.02f'), y-axis-format = d3.format('.02f')}) ->
+        <- nv.add-graph
+
+        chart = nv.models.scatter-chart!
+            .showDistX true
+            .showDistY true
+            .transitionDuration 350
+            .color d3.scale.category10!.range!
+
+        chart.tooltipContent (key, , , {point}) -> 
+            (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+
+        
+        chart.x-axis.tick-format x-axis-format
+        chart.y-axis.tick-format y-axis-format
+
+
+
+        d3.select \svg .datum result .call chart
 }
 
 # creates, configures & returns a new instance of ace-editor
