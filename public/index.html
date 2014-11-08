@@ -21,7 +21,7 @@
     </head>
     <body>
       <a id="query-listing" href="/list">&lt; Query listing</a>
-      <input id="name" type="text" value = "<%= name %>"/>
+      <input id="name" placeholder="Enter query name here!" type="text" value="<%= name %>"/>
       <div>
         <div id="query-editor"><%= query %></div>
         <div id="transformer"><%= transformationCode %></div>
@@ -31,9 +31,7 @@
       </div>
       <div>
         <pre id="result"></pre>
-        <div>
-          <svg width="640px" height="640px"></svg>
-        </div>
+        <svg></svg>
       </div>
     </body>
 </html>

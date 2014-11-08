@@ -15,7 +15,7 @@
   "dependencies": {
     "jquery": "~2.1.1",
     "prelude-browser-min": "http://www.preludels.com/prelude-browser-min.js",
-    "ace-builds": "~1.1.7",
+    "ace-builds": "https://github.com/furqanZafar/ace-builds.git#master",
     "KeyboardJS": "~0.4.2",
     "d3": "~3.1.5",
     "nvd3": "~1.1.15-beta",

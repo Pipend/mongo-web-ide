@@ -1,11 +1,11 @@
-{fold, keys, map} = require \prelude-ls
+{dasherize, filter, fold, keys, map, obj-to-pairs} = require \prelude-ls
 {compile} = require \LiveScript
 
 # all functions defined here are accessibly by the transformation code
 transformation-context = {}
-chart = null
 
 # all functions defined here are accessibly by the presentation code
+chart = null    
 presentation-context = {
 
     json: (result)-> $ \#result .html JSON.stringify result, null, 4
@@ -28,8 +28,9 @@ presentation-context = {
             .x (.0)
             .y (.1)
         chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-            
+        
         d3.select \svg .datum result .call chart
+        
 
     plot-stacked-area: (result)->
 
@@ -47,15 +48,16 @@ presentation-context = {
         d3.select \svg .datum result .call chart
 
     plot-scatter: (result, {tooltip, x-axis-format = d3.format('.02f'), y-axis-format = d3.format('.02f')}) ->
+
         <- nv.add-graph
 
         chart := nv.models.scatter-chart!
-            .showDistX true
-            .showDistY true
-            .transitionDuration 350
+            .show-dist-x true
+            .show-dist-y true
+            .transition-duration 350
             .color d3.scale.category10!.range!
 
-        chart.tooltipContent (key, , , {point}) -> 
+        chart.tooltip-content (key, , , {point}) -> 
             (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
 
         chart.x-axis.tick-format x-axis-format
@@ -65,9 +67,7 @@ presentation-context = {
 }
 
 # resize the chart on window resize
-nv.utils.windowResize -> 
-    if !!chart
-        chart.update!
+nv.utils.window-resize -> chart.update! if !!chart
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -135,13 +135,35 @@ $ ->
     presenter = create-livescript-editor \presenter
 
     # setup auto-complete
+    convert-to-ace-keywords = (keywords, meta, prefix)->
+        keywords
+            |> map -> {text: it, meta: meta}
+            |> filter -> it.text.index-of(prefix) == 0 
+            |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
+
+    keywords-from-context = (context)->
+        context
+            |> obj-to-pairs 
+            |> map -> dasherize it.0
+
     lang-tools = ace.require \ace/ext/language_tools
-    
-    # (ace.require \ace/ext/language_tools).addCompleter {
-    #     getCompletions: (editor, session, pos, prefix, callback)->
-    #         return callback null, [] if prefix.length === 0
-    #         callback null, [{name: "", value: "", score: 0, meta: ""}]
-    # }
+        ..add-completer {
+            get-completions: (, , , prefix, callback)->
+
+                mongo-keywords = <[$add $add-to-set $all-elements-true $and $any-element-true $avg $cmp $concat $cond $day-of-month $day-of-week $day-of-year $divide $eq $first $geo-near $group $gt 
+                $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month $multiply $ne $not $or $out $project $push $redact $second 
+                $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
+                
+                callback null, convert-to-ace-keywords mongo-keywords, \mongo, prefix
+        }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
+
+    $.get \/keywords, (collection-keywords)->
+        lang-tools.add-completer { 
+            get-completions: (, , , prefix, callback)-> 
+                callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix 
+        }
 
     execute-query-and-display-results = ->
 
@@ -163,7 +185,13 @@ $ ->
         [err, result] = run-livescript presentation-context, result, presentation-code
         return $ \#result .html "presenter error #{err}" if !!err
 
-    get-document = -> {query-id: window.document-properties.query-id, name: $ \#name .val!, query: query-editor.get-value!, transformation-code: transformer.get-value!, presentation-code: presenter.get-value!}
+    get-document = -> {
+        query-id: window.document-properties.query-id
+        name: $ \#name .val!
+        query: query-editor.get-value!
+        transformation-code: transformer.get-value!
+        presentation-code: presenter.get-value!
+    }
 
     # returns noop if the document hasn't changed since the last save
     get-save-function = (->        

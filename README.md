@@ -22,8 +22,11 @@ config =
         socketOptions: 
           keepAlive: 1
     port: 3000
+    test-ips: <[127.0.0.1]>
   release: {}
   preview: {}
+  local:
+    mongo: "mongodb://127.0.0.1:27017/MobiOne-events/"
 
 module.exports = config.all <<< config[config.env] <<< env: config.env
 ```

@@ -3,7 +3,7 @@ config = require \./config
 express = require \express
 fs = require \fs
 vm = require \vm
-{map} = require \prelude-ls
+{concat-map, keys, map} = require \prelude-ls
 {MongoClient, ObjectID} = require \mongodb
 {compile} = require \LiveScript
 
@@ -48,6 +48,12 @@ die = (res, err)->
     res.status 500
     res.end err
 
+get-all-keys-recursively = (object)->
+    keys object |> concat-map (key)-> 
+        return [] if typeof object[key] == \function
+        return [key, "$#{key}"] ++ (get-all-keys-recursively object[key])  if typeof object[key] == \object
+        [key, "$#{key}"]
+
 # load a new document
 app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, name: "", query: "", transformation-code: \result, presentation-code: "json result"}
 
@@ -59,6 +65,20 @@ app.get "/:queryId(\\d+)", (req, res)->
     (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
     return die res, err if !!err
     res.render \public/index.html, {name: ""} <<< (JSON.parse data) <<< {query-id: parse-int query-id}
+
+# extract keywords from the latest record (for auto-completion)
+app.get \/keywords, (req, res)->
+    (err, results) <- db.collection \events .aggregate do 
+        [
+            {
+                $sort: _id: -1
+            }
+            {
+                $limit: 1
+            }
+        ]
+    return die err, res if !!err 
+    res.end JSON.stringify (get-all-keys-recursively results.0) ++ config.test-ips
 
 # list all the queries
 app.get \/list, (req, res)->
@@ -78,7 +98,6 @@ app.get \/list, (req, res)->
             callback null, JSON.parse data
 
     res.render \public/list.html, {queries: result |> map ({query-id, name})-> {query-id, description: "#{name} (#{query-id})"}}
-
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
