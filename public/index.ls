@@ -83,11 +83,14 @@ presentation-context = {
             .transition-duration 350
             .color d3.scale.category10!.range!
 
-        chart.tooltip-content (key, , , {point}) -> 
-            (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+        chart
+            ..scatter.only-circles false
 
-        chart.x-axis.tick-format x-axis-format
-        chart.y-axis.tick-format y-axis-format
+            ..tooltip-content (key, , , {point}) -> 
+                (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+
+            ..x-axis.tick-format x-axis-format
+            ..y-axis.tick-format y-axis-format
 
         d3.select \svg .datum result .call chart
 }
