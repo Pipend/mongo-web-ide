@@ -15,10 +15,11 @@
   "dependencies": {
     "jquery": "~2.1.1",
     "prelude-browser-min": "http://www.preludels.com/prelude-browser-min.js",
-    "ace-builds": "https://github.com/furqanZafar/ace-builds.git#master",    
+    "ace-builds": "https://github.com/furqanZafar/ace-builds.git#master",
     "d3": "~3.1.5",
     "nvd3": "~1.1.15-beta",
-    "LiveScript": "https://github.com/gkz/LiveScript.git#~1.3.1"
+    "LiveScript": "https://github.com/gkz/LiveScript.git#~1.3.1",
+    "keymaster": "~1.6.2"
   },
   "resolutions": {
     "d3": "~3.1.5"
