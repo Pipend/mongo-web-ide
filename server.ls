@@ -63,8 +63,28 @@ app.get "/:queryId(\\d+)", (req, res)->
     {query-id} = req.params
 
     (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
-    return die res, err if !!err
+    return die res, err.to-string! if !!err
     res.render \public/index.html, {name: ""} <<< (JSON.parse data) <<< {query-id: parse-int query-id}
+
+# fork
+app.get "/fork/:queryId(\\d+)", (req, res)->
+
+    {query-id} = req.params
+    new-query-id = new Date!.get-time!
+
+    # create a new copy of the query file
+    (err, data) <- fs.read-file "./tmp/#{query-id}.json"
+    return die res, err.to-string! if !!err
+
+    data = JSON.parse data
+    data.name = "Copy of #{data.name}"
+
+    (err) <- fs.write-file "./tmp/#{new-query-id}.json", JSON.stringify data, null, 4
+    return die res, err.to-string! if !!err
+
+    # redirect the user to copy of the query
+    res.redirect "/#{new-query-id}"
+
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords, (req, res)->
@@ -116,16 +136,16 @@ app.post \/query, (req, res)->
 app.post \/save, (req, res)->
 
     # generate a query-id (if not present in the request)
-    {query-id} = JSON.parse req.body
-    query-id = new Date!.get-time! if !query-id
+    body = JSON.parse req.body    
+    body.query-id = new Date!.get-time! if !body.query-id
 
     # save the document as json & return the query-id
-    (err) <- fs.write-file "./tmp/#{query-id}.json", req.body
+    (err) <- fs.write-file "./tmp/#{body.query-id}.json", JSON.stringify body, null, 4
     if !!err
         res.status 500
         res.end JSON.stringify [err, null]
         return
-    res.end JSON.stringify [null, query-id]
+    res.end JSON.stringify [null, body.query-id]
 
 app.listen config.port
 console.log "listening on port #{config.port}"
