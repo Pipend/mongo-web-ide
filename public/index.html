@@ -20,18 +20,30 @@
       <script src="/public/index.js" type="text/javascript"></script>
     </head>
     <body>
-      <a id="query-listing" href="/list">&lt; Query listing</a>
-      <input id="name" placeholder="Enter query name here!" type="text" value="<%= name %>"/>
-      <div>
-        <div id="query-editor"><%= query %></div>
-        <div id="transformer"><%= transformationCode %></div>
-        <div id="presenter"><%= presentationCode %></div>
-        <div id="execute-mongo-query" class="button">Execute</div>
-        <div id="preloader" class="hide"></div>
+      <div class="menu">
+        <a class="logo" href="/list">Home</a>
+        <a class="button">Save</a>
+        <a class="button">Fork</a>
       </div>
-      <div>
-        <pre id="result"></pre>
-        <svg></svg>
+      <div class="content">
+        <div class="editors">
+          <div class="editor-name">
+              <input type="text" placeholder="Enter query name here!" value="<%= name %>"/>
+          </div>
+          <div class="editor" id="query-editor"><%= query %></div>
+          <div class="resize-handle horizontal"></div>
+          <div class="editor-name">Transformation</div>
+          <div class="editor"id="transformer"><%= transformationCode %></div>
+          <div class="resize-handle horizontal"></div>        
+          <div class="editor-name">Presentation</div>
+          <div class="editor"id="presenter"><%= presentationCode %></div>
+          <div class="resize-handle horizontal"></div>        
+        </div>
+        <div class="resize-handle vertical"></div>
+        <div class="output">
+          <pre></pre>
+          <svg></svg>
+        </div>
       </div>
     </body>
 </html>

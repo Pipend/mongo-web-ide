@@ -8,7 +8,7 @@ transformation-context = {}
 chart = null    
 presentation-context = {
 
-    json: (result)-> $ \#result .html JSON.stringify result, null, 4
+    json: (result)-> $ \pre .html JSON.stringify result, null, 4
 
     plot-histogram: (result)->
 
@@ -129,10 +129,45 @@ save = (document-object, callback)->
 # on dom ready
 $ ->
 
+    # setup the initial size
+    $ \.content .height window.inner-height - ($ \.menu .height!)
+    $ \.editors .width window.inner-width * 0.4
+    $ \.editor .height ($ \.content .height! - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3    
+    $ \.output .height ($ \.content .height!)    
+    $ "pre, svg" .height ($ \.output .height!)
+
+    update-output-width = ->
+        $ \.output .width (window.inner-width - ($ \.editors .width!) - ($ \.resize-handler.vertical .width!) - 10)
+        $ "pre, svg" .width ($ \.output .width!)
+        chart.update! if !!chart
+
+    update-output-width!    
+
     # create the editors
     query-editor = create-livescript-editor \query-editor
     transformer = create-livescript-editor \transformer
     presenter = create-livescript-editor \presenter
+
+    # change the width editors, output div by draging the vertical resize-handle
+    $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
+        initial-width = $ \.editors .width!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)->            
+            $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
+            update-output-width!
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
+
+    $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
+        $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
+        initial-height = $editor .height!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)-> 
+            $editor.height (initial-height + (e2.page-y - e1.page-y))
+            query-editor.resize!
+            transformer.resize!
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
     # setup auto-complete
     convert-to-ace-keywords = (keywords, meta, prefix)->
@@ -146,6 +181,7 @@ $ ->
             |> obj-to-pairs 
             |> map -> dasherize it.0
 
+    # auto complete for mongo keywords
     lang-tools = ace.require \ace/ext/language_tools
         ..add-completer {
             get-completions: (, , , prefix, callback)->
@@ -159,6 +195,7 @@ $ ->
         ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
         ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
 
+    # auto complete for collection properties
     $.get \/keywords, (collection-keywords)->
         lang-tools.add-completer { 
             get-completions: (, , , prefix, callback)-> 
@@ -169,7 +206,7 @@ $ ->
 
         # clean existing results
         $ \#preloader .remove-class \hide
-        $ \#result .html ""
+        $ \pre .html ""
         $ "svg" .empty!
 
         # query, transform & plot 
@@ -240,7 +277,6 @@ $ ->
     window.onbeforeunload = -> 
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
-        
 
 
 
