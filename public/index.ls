@@ -8,9 +8,10 @@ transformation-context = {}
 chart = null    
 presentation-context = {
 
-    json: (result)-> $ \#result .html JSON.stringify result, null, 4
+    json: (result)-> $ \pre .html JSON.stringify result, null, 4
 
     table: (result)-> 
+
         cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
         
         #todo: don't do this if the table is already present
@@ -96,9 +97,6 @@ presentation-context = {
         d3.select \svg .datum result .call chart
 }
 
-# resize the chart on window resize
-nv.utils.window-resize -> chart.update! if !!chart
-
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
     ace.edit element-id
@@ -139,6 +137,20 @@ execute-query = (->
 
 )!
 
+update-output-width = ->
+    $ \.output .width (window.inner-width - ($ \.editors .width!) - ($ \.resize-handler.vertical .width!) - 10)
+    $ \.preloader 
+        ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
+        ..width ($ \.output .width!)
+        ..height ($ \.output .height!)
+    $ "pre, svg" .width ($ \.output .width!)
+    chart.update! if !!chart
+
+# resize the chart on window resize
+nv.utils.window-resize -> 
+    update-output-width!
+    chart.update! if !!chart
+
 # compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
     livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
@@ -159,10 +171,40 @@ save = (document-object, callback)->
 # on dom ready
 $ ->
 
+    # setup the initial size
+    $ \.content .height window.inner-height - ($ \.menu .height!)
+    $ \.editors .width window.inner-width * 0.4
+    $ \.editor .height ($ \.content .height! - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3    
+    $ \.output .height ($ \.content .height!)    
+    $ "pre, svg" .height ($ \.output .height!)
+
+    update-output-width!    
+
     # create the editors
     query-editor = create-livescript-editor \query-editor
     transformer = create-livescript-editor \transformer
     presenter = create-livescript-editor \presenter
+
+    # change the width editors, output div by draging the vertical resize-handle
+    $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
+        initial-width = $ \.editors .width!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)->            
+            $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
+            [query-editor, transformer, presenter] |> map (.resize!)
+            update-output-width!            
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
+
+    $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
+        $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
+        initial-height = $editor .height!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)-> 
+            $editor.height (initial-height + (e2.page-y - e1.page-y))
+            [query-editor, transformer, presenter] |> map (.resize!)
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
     # setup auto-complete
     convert-to-ace-keywords = (keywords, meta, prefix)->
@@ -176,6 +218,7 @@ $ ->
             |> obj-to-pairs 
             |> map -> dasherize it.0
 
+    # auto complete for mongo keywords
     lang-tools = ace.require \ace/ext/language_tools
         ..add-completer {
             get-completions: (, , , prefix, callback)->
@@ -189,6 +232,7 @@ $ ->
         ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
         ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
 
+    # auto complete for collection properties
     $.get \/keywords, (collection-keywords)->
         lang-tools.add-completer { 
             get-completions: (, , , prefix, callback)-> 
@@ -196,24 +240,28 @@ $ ->
         }
 
     execute-query-and-display-results = ->
-
-        # clean existing results
-        $ \#preloader .remove-class \hide
-        $ \#result .html ""
-        $ "svg" .empty!
+        
+        # show preloader
+        $ \.preloader .show!        
 
         # query, transform & plot 
         {query, transformation-code, presentation-code} = get-document!
 
         (err, result) <- execute-query query
-        $ \#preloader .add-class \hide
-        return $ \#result .html "query-editor error #{err}" if !!err
+
+        # clear existing result
+        $ \pre .html ""
+        $ "svg" .empty!
+
+        # display the new result
+        $ \.preloader .hide!
+        return $ \pre .html "query-editor error #{err}" if !!err
 
         [err, result] = run-livescript transformation-context, (JSON.parse result), transformation-code
-        return $ \#result .html "transformer error #{err}" if !!err
+        return $ \pre .html "transformer error #{err}" if !!err
 
         [err, result] = run-livescript presentation-context, result, presentation-code
-        return $ \#result .html "presenter error #{err}" if !!err
+        return $ \pre .html "presenter error #{err}" if !!err
 
     get-document = -> {
         query-id: window.document-properties.query-id
@@ -250,13 +298,14 @@ $ ->
 
     # two objects are equal if they have the same keys & values
     is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
-        
+
+    key.filter = -> true
+
     # execute the query on button click or hot key (command + enter)
-    KeyboardJS.on "command + enter", execute-query-and-display-results
-    $ \#execute-mongo-query .on \click, execute-query-and-display-results
+    key 'command + enter', execute-query-and-display-results
 
     # save the document
-    KeyboardJS.on "command + s", (e)->
+    on-save = (e)->
 
         [,save-function] = get-save-function!
         save-function!
@@ -264,13 +313,14 @@ $ ->
         # prevent default behavious of displaying the save-dialog
         e.prevent-default!
         e.stop-propagation!
-        return false
+        false
+    key 'command + s', on-save
+    $ \#save .click on-save
 
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
-        
 
 
 
