@@ -1,4 +1,4 @@
-{dasherize, filter, fold, keys, map, obj-to-pairs} = require \prelude-ls
+{dasherize, filter, fold, keys, map, obj-to-pairs, Obj, id} = require \prelude-ls
 {compile} = require \LiveScript
 
 # all functions defined here are accessibly by the transformation code
@@ -9,6 +9,32 @@ chart = null
 presentation-context = {
 
     json: (result)-> $ \pre .html JSON.stringify result, null, 4
+
+    table: (result)-> 
+        $ \#result .html ''
+        cols = result.0 |> Obj.keys
+        
+        #todo: don't do this if the table is already present
+        $table = d3.select \#result .append \table
+        $table.append \thead .append \tr
+        $table.append \tbody
+
+        $table.select 'thead tr' .select-all \td .data cols
+            ..enter!
+                .append \td
+            ..exit!.remove!
+            ..text id
+
+        
+        $table.select \tbody .select-all \tr .data result
+            ..enter!
+                .append \tr
+            ..exit!.remove!
+            ..select-all \td .data obj-to-pairs
+                ..enter!
+                    .append \td
+                ..exit!.remove!
+                ..text (.1)
 
     plot-histogram: (result)->
 
@@ -57,11 +83,14 @@ presentation-context = {
             .transition-duration 350
             .color d3.scale.category10!.range!
 
-        chart.tooltip-content (key, , , {point}) -> 
-            (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+        chart
+            ..scatter.only-circles false
 
-        chart.x-axis.tick-format x-axis-format
-        chart.y-axis.tick-format y-axis-format
+            ..tooltip-content (key, , , {point}) -> 
+                (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+
+            ..x-axis.tick-format x-axis-format
+            ..y-axis.tick-format y-axis-format
 
         d3.select \svg .datum result .call chart
 }
