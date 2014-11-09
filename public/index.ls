@@ -227,7 +227,7 @@ $ ->
         $ \pre .html ""
         $ "svg" .empty!
 
-        display-error: (err)->
+        display-error = (err)->
             show-output-tag \pre
             $ \pre .html err
 
