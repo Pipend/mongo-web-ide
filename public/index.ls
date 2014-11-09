@@ -11,11 +11,12 @@ presentation-context = {
     json: (result)-> $ \pre .html JSON.stringify result, null, 4
 
     table: (result)-> 
-        $ \pre .html ''
-        cols = result.0 |> Obj.keys
+
+        cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
         
         #todo: don't do this if the table is already present
-        $table = d3.select \pre .append \table
+        $ \#result .html ''
+        $table = d3.select \#result .append \table
         $table.append \thead .append \tr
         $table.append \tbody
 
@@ -29,8 +30,9 @@ presentation-context = {
         $table.select \tbody .select-all \tr .data result
             ..enter!
                 .append \tr
+                .attr \style, (.$style)
             ..exit!.remove!
-            ..select-all \td .data obj-to-pairs
+            ..select-all \td .data obj-to-pairs >> (filter ([k]) -> (cols.index-of k) > -1)
                 ..enter!
                     .append \td
                 ..exit!.remove!
@@ -73,7 +75,7 @@ presentation-context = {
             
         d3.select \svg .datum result .call chart
 
-    plot-scatter: (result, {tooltip, x-axis-format = d3.format('.02f'), y-axis-format = d3.format('.02f')}) ->
+    plot-scatter: (result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')}) ->
 
         <- nv.add-graph
 
