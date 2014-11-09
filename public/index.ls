@@ -1,101 +1,8 @@
 {dasherize, filter, fold, keys, map, obj-to-pairs, Obj, id} = require \prelude-ls
 {compile} = require \LiveScript
 
-# all functions defined here are accessibly by the transformation code
-transformation-context = {}
-
-# all functions defined here are accessibly by the presentation code
-chart = null    
-presentation-context = {
-
-    json: (result)-> $ \pre .html JSON.stringify result, null, 4
-
-    table: (result)-> 
-
-        cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
-        
-        #todo: don't do this if the table is already present
-        $ \#result .html ''
-        $table = d3.select \#result .append \table
-        $table.append \thead .append \tr
-        $table.append \tbody
-
-        $table.select 'thead tr' .select-all \td .data cols
-            ..enter!
-                .append \td
-            ..exit!.remove!
-            ..text id
-
-        
-        $table.select \tbody .select-all \tr .data result
-            ..enter!
-                .append \tr
-                .attr \style, (.$style)
-            ..exit!.remove!
-            ..select-all \td .data obj-to-pairs >> (filter ([k]) -> (cols.index-of k) > -1)
-                ..enter!
-                    .append \td
-                ..exit!.remove!
-                ..text (.1)
-
-    plot-histogram: (result)->
-
-        <- nv.add-graph
-
-        chart := nv.models.multi-bar-chart!
-            .x (.label)
-            .y (.value)
-
-        d3.select \svg .datum result .call chart
-
-    plot-timeseries: (result)->
-
-        <- nv.add-graph 
-
-        chart := nv.models.line-chart!
-            .x (.0)
-            .y (.1)
-        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-        
-        d3.select \svg .datum result .call chart
-        
-
-    plot-stacked-area: (result)->
-
-        <- nv.add-graph 
-
-        chart := nv.models.stacked-area-chart!
-            .x (.0)
-            .y (.1)
-            .useInteractiveGuideline true
-            .show-controls true
-            .clip-edge true
-
-        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-            
-        d3.select \svg .datum result .call chart
-
-    plot-scatter: (result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')}) ->
-
-        <- nv.add-graph
-
-        chart := nv.models.scatter-chart!
-            .show-dist-x true
-            .show-dist-y true
-            .transition-duration 350
-            .color d3.scale.category10!.range!
-
-        chart
-            ..scatter.only-circles false
-
-            ..tooltip-content (key, , , {point}) -> 
-                (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
-
-            ..x-axis.tick-format x-axis-format
-            ..y-axis.tick-format y-axis-format
-
-        d3.select \svg .datum result .call chart
-}
+# global variables
+chart = null
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -134,13 +41,7 @@ execute-query = (->
 
         previous-request <<< {query}
 
-
 )!
-
-# resize the chart on window resize
-nv.utils.window-resize -> 
-    update-output-width!
-    chart.update! if !!chart
 
 convert-to-ace-keywords = (keywords, meta, prefix)->
     keywords
@@ -148,15 +49,20 @@ convert-to-ace-keywords = (keywords, meta, prefix)->
         |> filter -> it.text.index-of(prefix) == 0 
         |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
 
+# two objects are equal if they have the same keys & values
+is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
+
+# by default the keymaster plugin filters input elements
+key.filter = -> true
+
 keywords-from-context = (context)->
     context
         |> obj-to-pairs 
         |> map -> dasherize it.0
 
-key.filter = -> true
-
-# two objects are equal if they have the same keys & values
-is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
+plot-chart = (chart, result)->
+    show-output-tag \svg
+    d3.select \svg .datum result .call chart
 
 # compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
@@ -184,7 +90,107 @@ update-output-width = ->
     $ "pre, svg" .width ($ \.output .width!)
     chart.update! if !!chart
 
+show-output-tag = (tag)-> 
+    $ \.output .children! .each -> 
+        $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
 
+# all functions defined here are accessibly by the transformation code
+transformation-context = {}
+
+# all functions defined here are accessibly by the presentation code
+presentation-context = {
+
+    json: (result)-> 
+        show-output-tag \pre
+        $ \pre .html JSON.stringify result, null, 4
+
+    table: (result)-> 
+
+        show-output-tag \pre
+
+        cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
+        
+        #todo: don't do this if the table is already present
+        $ \#result .html ''
+        $table = d3.select \#result .append \table
+        $table.append \thead .append \tr
+        $table.append \tbody
+
+        $table.select 'thead tr' .select-all \td .data cols
+            ..enter!
+                .append \td
+            ..exit!.remove!
+            ..text id
+
+        
+        $table.select \tbody .select-all \tr .data result
+            ..enter!
+                .append \tr
+                .attr \style, (.$style)
+            ..exit!.remove!
+            ..select-all \td .data obj-to-pairs >> (filter ([k]) -> (cols.index-of k) > -1)
+                ..enter!
+                    .append \td
+                ..exit!.remove!
+                ..text (.1)
+
+    plot-histogram: (result)->
+
+        <- nv.add-graph
+
+        chart := nv.models.multi-bar-chart!
+            .x (.label)
+            .y (.value)
+
+        plot-chart chart, result
+
+    plot-timeseries: (result)->
+
+        <- nv.add-graph 
+
+        chart := nv.models.line-chart!
+            .x (.0)
+            .y (.1)
+        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+        
+        plot-chart chart, result
+        
+    plot-stacked-area: (result)->
+
+        <- nv.add-graph 
+
+        chart := nv.models.stacked-area-chart!
+            .x (.0)
+            .y (.1)
+            .useInteractiveGuideline true
+            .show-controls true
+            .clip-edge true
+
+        chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            
+        plot-chart chart, result
+
+    plot-scatter: (result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')}) ->
+
+        <- nv.add-graph
+
+        chart := nv.models.scatter-chart!
+            .show-dist-x true
+            .show-dist-y true
+            .transition-duration 350
+            .color d3.scale.category10!.range!
+
+        chart
+            ..scatter.only-circles false
+
+            ..tooltip-content (key, , , {point}) -> 
+                (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+
+            ..x-axis.tick-format x-axis-format
+            ..y-axis.tick-format y-axis-format
+
+        plot-chart chart, result
+}
 
 # on dom ready
 $ ->
@@ -216,15 +222,19 @@ $ ->
         $ \pre .html ""
         $ "svg" .empty!
 
+        display-error: (err)->
+            show-output-tag \pre
+            $ \pre .html err
+
         # display the new result
         $ \.preloader .hide!
-        return $ \pre .html "query-editor error #{err}" if !!err
+        return display-error "query-editor error #{err}" if !!err
 
         [err, result] = run-livescript transformation-context, (JSON.parse result), transformation-code
-        return $ \pre .html "transformer error #{err}" if !!err
+        return display-error "transformer error #{err}" if !!err
 
         [err, result] = run-livescript presentation-context, result, presentation-code
-        return $ \pre .html "presenter error #{err}" if !!err
+        return display-error "presenter error #{err}" if !!err
 
     get-document = -> {
         query-id: window.document-properties.query-id
@@ -267,7 +277,7 @@ $ ->
         local-storage.set-item (document-properties.query-id || 0), JSON.stringify get-document!
 
     # load from local storage
-    local-save = local-storage.get-item document-properties.query-id
+    local-save = local-storage.get-item (document-properties.query-id || 0)
 
     if !!local-save
         {query, transformation-code, presentation-code} = JSON.parse local-save
@@ -346,6 +356,11 @@ $ ->
         save-to-local-storage!
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
+
+    # resize the chart on window resize
+    window.onresize = -> 
+        update-output-width!
+        chart.update! if !!chart
 
 
 
