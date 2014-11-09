@@ -289,6 +289,7 @@ $ ->
         query-editor .set-value query
         transformer .set-value transformation-code
         presenter .set-value presentation-code
+        [query-editor, transformer, presenter] |> map -> it.session.selection.clear-selection!        
 
     else 
         save-to-local-storage!
