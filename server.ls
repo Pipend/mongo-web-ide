@@ -3,7 +3,8 @@ config = require \./config
 express = require \express
 fs = require \fs
 vm = require \vm 
-{concat-map, keys, map} = require \prelude-ls
+{concat-map, keys, map, filter} = require \prelude-ls
+moment = require \moment
 {MongoClient, ObjectID} = require \mongodb
 {compile} = require \LiveScript
 
@@ -109,7 +110,7 @@ app.get \/list, (req, res)->
 
     # read each file 
     (err, result) <- async.map do 
-        files
+        files |> filter (-> (it.index-of ".json") != -1)
         (file, callback)->
 
             (err, data) <- fs.read-file "./tmp/#{file}", \utf8            
@@ -117,14 +118,21 @@ app.get \/list, (req, res)->
 
             callback null, JSON.parse data
 
+    return die res, err if !!err
     res.render \public/list.html, {queries: result |> map ({query-id, name})-> {query-id, description: "#{name} (#{query-id})"}}
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
     
+    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
+    parse-date = (s) -> new Date s
+    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
     [err, query] = compile-and-execute-livescript req.body, {
         object-id: ObjectID
-        timestamp-to-day: (timestamp-key)-> $divide: [$subtract: [timestamp-key, $mod: [timestamp-key, 86400000]], 86400000]
+        bucketize
+        timestamp-to-day: bucketize 86400000
+        today: today!
+        parse-date
     } <<< require \prelude-ls
     return die res, err if !!err
 
