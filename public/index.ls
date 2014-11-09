@@ -192,6 +192,11 @@ presentation-context = {
         plot-chart chart, result
 }
 
+# resize the chart on window resize
+nv.utils.window-resize ->
+    update-output-width!
+    chart.update! if !!chart
+
 # on dom ready
 $ ->
     
@@ -357,11 +362,7 @@ $ ->
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
-    # resize the chart on window resize
-    window.onresize = -> 
-        update-output-width!
-        chart.update! if !!chart
-
+    
 
 
 

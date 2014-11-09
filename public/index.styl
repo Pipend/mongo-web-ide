@@ -44,11 +44,14 @@ body
       
   .content 
     background: #272822
-    position: relative
+    font-size: 0px
+    white-space: nowrap
+    position: relative    
 
     > div
-      float: left
-    
+      display: inline-block
+      vertical-align: top
+
     .editors
       overflow: auto
 
@@ -91,6 +94,13 @@ body
         background: white
         overflow: auto
         position: relative
+
+        > *
+          position: relative
+
+        pre
+          font-size: 14px
+          margin: 8px
 
   .resize-handle.vertical  
     background: linear-gradient(to right, #505050, #383838)    
