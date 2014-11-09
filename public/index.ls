@@ -135,19 +135,26 @@ execute-query = (->
 
 )!
 
-update-output-width = ->
-    $ \.output .width (window.inner-width - ($ \.editors .width!) - ($ \.resize-handler.vertical .width!) - 10)
-    $ \.preloader 
-        ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
-        ..width ($ \.output .width!)
-        ..height ($ \.output .height!)
-    $ "pre, svg" .width ($ \.output .width!)
-    chart.update! if !!chart
-
 # resize the chart on window resize
 nv.utils.window-resize -> 
     update-output-width!
     chart.update! if !!chart
+
+convert-to-ace-keywords = (keywords, meta, prefix)->
+    keywords
+        |> map -> {text: it, meta: meta}
+        |> filter -> it.text.index-of(prefix) == 0 
+        |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
+
+keywords-from-context = (context)->
+    context
+        |> obj-to-pairs 
+        |> map -> dasherize it.0
+
+key.filter = -> true
+
+# two objects are equal if they have the same keys & values
+is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
 
 # compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
@@ -165,77 +172,33 @@ save = (document-object, callback)->
             return callback err, null if !!err
             callback null, query-id
         ..fail ({response-text})-> callback response-text, null
-            
+
+update-output-width = ->
+    $ \.output .width (window.inner-width - ($ \.editors .width!) - ($ \.resize-handler.vertical .width!) - 10)
+    $ \.preloader 
+        ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
+        ..width ($ \.output .width!)
+        ..height ($ \.output .height!)
+    $ "pre, svg" .width ($ \.output .width!)
+    chart.update! if !!chart
+
+
+
 # on dom ready
 $ ->
-
+    
     # setup the initial size
     $ \.content .height window.inner-height - ($ \.menu .height!)
     $ \.editors .width window.inner-width * 0.4
     $ \.editor .height ($ \.content .height! - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3    
     $ \.output .height ($ \.content .height!)    
     $ "pre, svg" .height ($ \.output .height!)
-
     update-output-width!    
 
     # create the editors
     query-editor = create-livescript-editor \query-editor
     transformer = create-livescript-editor \transformer
     presenter = create-livescript-editor \presenter
-
-    # change the width editors, output div by draging the vertical resize-handle
-    $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
-        initial-width = $ \.editors .width!
-
-        $ window .unbind \mousemove .bind \mousemove, (e2)->            
-            $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
-            [query-editor, transformer, presenter] |> map (.resize!)
-            update-output-width!            
-
-        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
-
-    $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
-        $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
-        initial-height = $editor .height!
-
-        $ window .unbind \mousemove .bind \mousemove, (e2)-> 
-            $editor.height (initial-height + (e2.page-y - e1.page-y))
-            [query-editor, transformer, presenter] |> map (.resize!)
-
-        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
-
-    # setup auto-complete
-    convert-to-ace-keywords = (keywords, meta, prefix)->
-        keywords
-            |> map -> {text: it, meta: meta}
-            |> filter -> it.text.index-of(prefix) == 0 
-            |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
-
-    keywords-from-context = (context)->
-        context
-            |> obj-to-pairs 
-            |> map -> dasherize it.0
-
-    # auto complete for mongo keywords
-    lang-tools = ace.require \ace/ext/language_tools
-        ..add-completer {
-            get-completions: (, , , prefix, callback)->
-
-                mongo-keywords = <[$add $add-to-set $all-elements-true $and $any-element-true $avg $cmp $concat $cond $day-of-month $day-of-week $day-of-year $divide $eq $first $geo-near $group $gt 
-                $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month $multiply $ne $not $or $out $project $push $redact $second 
-                $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
-                
-                callback null, convert-to-ace-keywords mongo-keywords, \mongo, prefix
-        }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
-
-    # auto complete for collection properties
-    $.get \/keywords, (collection-keywords)->
-        lang-tools.add-completer { 
-            get-completions: (, , , prefix, callback)-> 
-                callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix 
-        }
 
     execute-query-and-display-results = ->
         
@@ -283,6 +246,10 @@ $ ->
             [
                 true
                 ->        
+
+                    # update the local-storage before making the request to recover from unexpected crash
+                    save-to-local-storage!
+
                     (err, query-id) <- save current-document
                     return console.log err if !!err
 
@@ -294,13 +261,70 @@ $ ->
             ]
     )!
 
-    # two objects are equal if they have the same keys & values
-    is-equal-to-object = (o1, o2)-> (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
+    save-to-local-storage = -> 
+        local-storage.set-item (document-properties.query-id || 0), JSON.stringify get-document!
 
-    key.filter = -> true
+    # load from local storage
+    local-save = local-storage.get-item document-properties.query-id
+
+    if !!local-save
+        {query, transformation-code, presentation-code} = JSON.parse local-save
+        query-editor .set-value query
+        transformer .set-value transformation-code
+        presenter .set-value presentation-code
+
+    else 
+        save-to-local-storage!
+
+    # save as soon as the user idles for more than half a second after keydown
+    $ window .on \keydown, _.debounce save-to-local-storage, 500
+
+    # change the width of the editors & the output
+    $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
+        initial-width = $ \.editors .width!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)->            
+            $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
+            [query-editor, transformer, presenter] |> map (.resize!)
+            update-output-width!            
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
+
+    # change the height of the editors 
+    $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
+        $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
+        initial-height = $editor .height!
+
+        $ window .unbind \mousemove .bind \mousemove, (e2)-> 
+            $editor.height (initial-height + (e2.page-y - e1.page-y))
+            [query-editor, transformer, presenter] |> map (.resize!)
+
+        $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
+    
+    # auto complete for mongo keywords
+    lang-tools = ace.require \ace/ext/language_tools
+        ..add-completer {
+            get-completions: (, , , prefix, callback)->
+
+                mongo-keywords = <[$add $add-to-set $all-elements-true $and $any-element-true $avg $cmp $concat $cond $day-of-month $day-of-week $day-of-year $divide $eq $first $geo-near $group $gt 
+                $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month $multiply $ne $not $or $out $project $push $redact $second 
+                $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
+                
+                callback null, convert-to-ace-keywords mongo-keywords, \mongo, prefix
+        }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
+
+    # auto complete for collection properties
+    $.get \/keywords, (collection-keywords)->
+        lang-tools.add-completer { 
+            get-completions: (, , , prefix, callback)-> 
+                callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix 
+        }
 
     # execute the query on button click or hot key (command + enter)
     key 'command + enter', execute-query-and-display-results
+    $ \#execute-query .on \click, execute-query-and-display-results
 
     # save the document
     on-save = (e)->
@@ -317,6 +341,7 @@ $ ->
 
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
+        save-to-local-storage!
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
