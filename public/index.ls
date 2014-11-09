@@ -111,8 +111,8 @@ presentation-context = {
         cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
         
         #todo: don't do this if the table is already present
-        $ \#result .html ''
-        $table = d3.select \#result .append \table
+        $ \pre .html ''
+        $table = d3.select \pre .append \table
         $table.append \thead .append \tr
         $table.append \tbody
 
