@@ -1,4 +1,4 @@
-{dasherize, filter, fold, keys, map, obj-to-pairs, Obj, id} = require \prelude-ls
+{dasherize, filter, fold, keys, map, obj-to-pairs, Obj, pairs-to-obj, id} = require \prelude-ls
 {compile} = require \LiveScript
 
 # global variables
@@ -18,7 +18,7 @@ execute-query = (->
 
     previous-request = {}
 
-    (query, callback)->
+    (cache, query, callback)->
 
         return callback previous-request.err, previous-request.result if query == previous-request.query
 
@@ -30,7 +30,12 @@ execute-query = (->
                 line += \} if i == lines.length - 1
                 line
 
-        query-result-promise = $.post \/query, "[#{lines.join '\n'}]"
+        request-body = JSON.stringify {
+            cache
+            query: "[#{lines.join '\n'}]"
+        }
+
+        query-result-promise = $.post \/query, request-body
             ..done (response)-> 
                 previous-request <<< {err: null, result: response}
                 callback null, response
@@ -59,6 +64,8 @@ keywords-from-context = (context)->
     context
         |> obj-to-pairs 
         |> map -> dasherize it.0
+
+parse-bool = -> it == \true
 
 plot-chart = (chart, result)->
     show-output-tag \svg
@@ -197,6 +204,22 @@ nv.utils.window-resize ->
     update-output-width!
     chart.update! if !!chart
 
+get-hash = -> 
+    (window.location.hash.replace \#?, "").split \& 
+        |> map (.split \=) 
+        |> pairs-to-obj
+
+set-hash = (obj)->
+    window.location.hash = obj  
+        |> obj-to-pairs 
+        |> map (.join \=)
+        |> (.join \&)
+        |> -> "#?#{it}"
+
+should-cache = ->
+    {cache} = get-hash!    
+    if typeof cache == \undefined then true else parse-bool cache
+
 # on dom ready
 $ ->
     
@@ -207,6 +230,13 @@ $ ->
     $ \.output .height ($ \.content .height!)    
     $ "pre, svg" .height ($ \.output .height!)
     update-output-width!    
+
+    # control server-side caching with document hash
+    on-hash-change = -> $ \#cache .toggle-class \on, should-cache!
+    window.onhashchange = on-hash-change
+    on-hash-change!        
+
+    $ \#cache .on \click, -> set-hash get-hash! <<< {cache: !should-cache!}
 
     # create the editors
     query-editor = create-livescript-editor \query-editor
@@ -221,7 +251,7 @@ $ ->
         # query, transform & plot 
         {query, transformation-code, presentation-code} = get-document!
 
-        (err, result) <- execute-query query
+        (err, result) <- execute-query should-cache!, query
 
         # clear existing result
         $ \pre .html ""
@@ -363,8 +393,8 @@ $ ->
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
-    
-
+    {execute-on-load} = get-hash!
+    execute-query-and-display-results! if parse-bool execute-on-load
 
 
 

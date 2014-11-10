@@ -1,3 +1,5 @@
+@import 'nib'
+
 body 
   font-family: Lato, sans-serif
   margin: 0px
@@ -18,6 +20,7 @@ body
       display: inline-block      
       text-align: center
       text-decoration: none
+      user-select: none
       vertical-align: top
 
       &.logo
@@ -42,6 +45,10 @@ body
         width: 90px    
         height: 54px
       
+      &.toggle.button.on 
+        background: yellow !important
+        color: black
+
   .content 
     background: #272822
     font-size: 0px

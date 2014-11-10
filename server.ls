@@ -1,12 +1,13 @@
-async = require \async
-config = require \./config
+async = require \async 
+config = require \./config 
 express = require \express
 fs = require \fs
-vm = require \vm 
-{concat-map, keys, map, filter} = require \prelude-ls
+md5 = require \MD5
 moment = require \moment
-{MongoClient, ObjectID} = require \mongodb
+vm = require \vm 
 {compile} = require \LiveScript
+{concat-map, keys, map, filter} = require \prelude-ls
+{MongoClient, ObjectID} = require \mongodb
 
 app = express!
     ..set \views, __dirname + \/
@@ -22,6 +23,8 @@ app = express!
         req.on \end, -> 
             req <<< {body}
             next!
+
+query-cache = {}
 
 (err, db) <- MongoClient.connect config.mongo, config.mongoOptions
 
@@ -56,7 +59,14 @@ get-all-keys-recursively = (object)->
         [key, "$#{key}"]
 
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {query-id: null, name: "", query: "", transformation-code: \result, presentation-code: "json result"}
+app.get \/, (req, res)-> 
+    res.render \public/index.html, {
+        query-id: null, 
+        name: "", 
+        query: "", 
+        transformation-code: \result, 
+        presentation-code: "json result"
+    }
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
@@ -65,6 +75,7 @@ app.get "/:queryId(\\d+)", (req, res)->
 
     (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
     return die res, err.to-string! if !!err
+
     res.render \public/index.html, {name: ""} <<< (JSON.parse data) <<< {query-id: parse-int query-id}
 
 # fork
@@ -85,7 +96,6 @@ app.get "/fork/:queryId(\\d+)", (req, res)->
 
     # redirect the user to copy of the query
     res.redirect "/#{new-query-id}"
-
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords, (req, res)->
@@ -123,22 +133,36 @@ app.get \/list, (req, res)->
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
-    
+
+    body = JSON.parse req.body
+
+    # return cached result if any
+    key = md5 body.query    
+    return res.end query-cache[key] if body.cache && !!query-cache[key]
+
+    # context for livescript code
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
     parse-date = (s) -> new Date s
     today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
-    [err, query] = compile-and-execute-livescript req.body, {
+    query-context = {
         object-id: ObjectID
         bucketize
         timestamp-to-day: bucketize 86400000
         today: today!
         parse-date
-    } <<< require \prelude-ls
+    }
+
+    # compile & execute livescript code to get the parameters for aggregation
+    [err, query] = compile-and-execute-livescript body.query, query-context <<< require \prelude-ls
     return die res, err if !!err
 
+    # perform aggregation
     (err, result) <- db.collection \events .aggregate query
     return die res, "mongodb error: #{err.to-string!}" if !!err
-    res.end JSON.stringify result, null, 4
+
+    # cache and return the response
+    res.end query-cache[key] = JSON.stringify result, null, 4
+    
 
 # save code to tmp directory
 app.post \/save, (req, res)->
