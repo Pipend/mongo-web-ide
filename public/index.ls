@@ -1,4 +1,4 @@
-{dasherize, filter, fold, keys, map, obj-to-pairs, Obj, pairs-to-obj, id} = require \prelude-ls
+{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
 {compile} = require \LiveScript
 
 # global variables  
@@ -213,6 +213,29 @@ set-hash = (obj)->
 show-output-tag = (tag)-> 
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
+
+
+search-queries = (name)->
+
+    (queries) <- $.get "/search?name=#{name}"
+
+    queries = JSON.parse queries
+
+    local-queries = [0 to local-storage.length] 
+        |> map -> local-storage.key it
+        |> filter -> !!it
+        |> map -> JSON.parse (local-storage.get-item it)
+        |> filter -> (it.name.to-lower-case!.index-of name.to-lower-case!) != -1
+
+    # filter out local-queries from remote-queries
+    # we always display the local data first
+    queries = queries
+        |> filter ({query-id})->
+            local-query = local-queries |> find -> it.query-id == query-id
+            typeof local-query == \undefined || local-query is null
+
+    all-queries = queries ++ local-queries
+         |> sort-by -> - it.query-id        
 
 # on dom ready
 $ ->    

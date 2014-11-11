@@ -125,6 +125,66 @@ body
       text-shadow: 0px 1px 0px black;
       vertical-align: middle;
 
+  .query-search
+    position: absolute
+    width: 100%
+    height: 100%
+    z-index: 1000000
+
+    .dismiss-area
+      background-color: rgba(0,0,0,0.2)
+      position: absolute
+      width: 100%
+      height: 100%
+
+    > div:last-child
+      position: absolute
+      top: 10%
+      left: 50%
+
+      > div:first-child
+        background: #666
+        max-height: 400px 
+        overflow: auto
+        padding-bottom: 1px
+        position: relative
+        left: -50%
+        width: 400px
+
+        input
+          appearance: none
+          background: white
+          border: 1px solid #ccc
+          box-sizing: border-box
+          font-size: 16px
+          line-height: 30px
+          text-indent: 4px
+          outline: none
+          position: relative
+          left: 2px
+          top: 2px
+          height: 30px
+          width: 396px
+
+        ul
+          margin: 0px
+          padding: 0px
+
+          li
+            border-bottom: 1px solid rgba(0,0,0,0.5)
+            box-shadow: 0px 1px 0px rgba(255,255,255,0.5)
+            height: 24px
+            font-size: 14px
+            line-height: 24px
+            list-style: none 
+            margin-top: 4px
+            vertical-align: middle
+
+            a
+              margin-left: 4px
+              text-decoration: none
+              color: white
+
 
 
 

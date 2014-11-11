@@ -154,6 +154,17 @@ app.post \/save, (req, res)->
 
     res.end JSON.stringify [null, records.0]
 
+
+app.get \/search, (req, res)->
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: name: {$regex: ".*#{req.query.name}.*", $options: \i}
+            }
+        ]
+    return die res, err if !!err
+    res.end JSON.stringify results
+
 app.listen config.port
 console.log "listening on port #{config.port}"
 
