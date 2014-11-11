@@ -316,6 +316,9 @@ $ ->
     [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
     save-to-local-storage!
 
+    # popstate
+    $ window .on \popstate, (e)-> history.back! if e.original-event.state is null
+
     # save to local storage as soon as the user idles for more than half a second after any keydown
     $ window .on \keydown, _.debounce save-to-local-storage, 500
 
