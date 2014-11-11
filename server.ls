@@ -34,7 +34,6 @@ console.log "successfully connected to #{config.mongo}"
 return console.log err if !!err
 console.log "successfully connected to #{config.connection-strings.0}"
 
-
 compile-and-execute-livescript = (livescript-code, context)->
 
     die = (err)->
@@ -100,6 +99,7 @@ app.get \/keywords, (req, res)->
     return die err, res if !!err 
     res.end JSON.stringify (get-all-keys-recursively results.0) ++ config.test-ips
 
+# list all the queries
 app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [

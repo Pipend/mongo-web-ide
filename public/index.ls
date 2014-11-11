@@ -290,12 +290,10 @@ $ ->
         # load from server
         else if !!window.remote-document-state
             history.push-state window.remote-document-state, window.remote-document-state.name, "/#{query-id}#{query-parameters}"
-            save-to-local-storage!
 
     else 
         document-state = get-document! <<< {query-id: new Date!.get-time!}
-        history.push-state document-state, document-state.name, "/#{document-state.query-id}#{query-parameters}"    
-        save-to-local-storage!
+        history.push-state document-state, document-state.name, "/#{document-state.query-id}#{query-parameters}"            
     
     # update the DOM from the local document state
     {name, query, transformation, presentation} = history.state
@@ -304,7 +302,8 @@ $ ->
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
-    
+    save-to-local-storage!
+
     # save to local storage as soon as the user idles for more than half a second after any keydown
     $ window .on \keydown, _.debounce save-to-local-storage, 500
 
@@ -324,11 +323,15 @@ $ ->
         $ \#cache .toggle-class \on, !!cache && parse-bool cache
 
     window.onhashchange = on-hash-change
+
+    # enable caching by default
+    {cache} = get-hash!
+    set-hash {cache: true} if typeof cache is \undefined || cache is null 
     on-hash-change!
 
     $ \#cache .on \click, -> 
         {cache} = get-hash!
-        set-hash {cache: !(!!cache && parse-bool cache)}
+        set-hash {cache: !(!!cache && parse-bool cache)}    
 
     # execute the query on button click or hot key (command + enter)
     key 'command + enter', execute-query-and-display-results
