@@ -19,7 +19,25 @@ body
       text-align: center
       text-decoration: none
       user-select: none
+      -webkit-user-select: none
       vertical-align: top
+
+      &[data-state=client] 
+        span 
+          &.client
+            display: inline-block
+          &.server 
+            display: none
+
+      &[data-state=server] 
+        span 
+          &.client
+            display: none
+          &.server 
+            display: inline-block
+
+      &:active 
+        -webkit-transform: translateY(1px)
 
       &.logo
         background-image: url(/public/images/mongodb-logo.png)
@@ -33,7 +51,7 @@ body
 
       &.button
         background: linear-gradient(#4d4d4d, #2f2f2f)        
-        border-radius: 4px
+        border-radius: 8px
         border: 1px solid black
         font-size: 16px
         line-height: 56px
@@ -43,6 +61,9 @@ body
         width: 90px    
         height: 54px
       
+      &.highlight
+        border-top: 2px solid orange
+
       &.toggle.button.on 
         background: yellow !important
         color: black

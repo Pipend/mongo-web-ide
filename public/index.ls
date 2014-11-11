@@ -142,13 +142,13 @@ get-query-parameters = ->
 get-save-function = (document-state)->
 
     # if there are no changes to the document return noop as the save function
-    return [false, $.noop] if document-state `is-equal-to-object` window.remote-document-state
+    return [false, (callback)-> callback! if !!callback] if document-state `is-equal-to-object` window.remote-document-state
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
     [
         true
-        ->        
+        (callback)->        
 
             # update the local-storage before making the request to recover from unexpected crash
             save-to-local-storage document-state
@@ -157,6 +157,7 @@ get-save-function = (document-state)->
             return console.log err if !!err
 
             window.remote-document-state = document-state
+            callback! if !!callback
 
     ]
 
@@ -174,16 +175,10 @@ keywords-from-context = (context)->
         |> obj-to-pairs 
         |> map -> dasherize it.0
 
-# save the document
-on-save = (e, document-state)->
-
-    [,save-function] = get-save-function document-state
-    save-function!
-
-    # prevent default behavious of displaying the save-dialog
-    e.prevent-default!
-    e.stop-propagation!
-    false
+#
+load-document-state = (query-id)->
+    state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
+    state <<< {query-id}    
 
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
@@ -192,13 +187,6 @@ parse-bool = -> it == \true
 plot-chart = (chart, result)->
     show-output-tag \svg
     d3.select \svg .datum result .call chart
-
-#
-push-state = (query-id)->
-    state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
-    state <<< {query-id}
-    history.replace-state state, state.name, "/#{query-id}#{get-query-parameters!}"
-    state
 
 # update the ace-editors after there corresponding div elements have been resized
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
@@ -250,6 +238,10 @@ set-hash = (obj)->
 show-output-tag = (tag)-> 
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
+
+toggle-remote-state-button = (document-state)->
+    $ \#remote-state .toggle !!window.remote-document-state.query-id
+    $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
 
 #
 try-get = (value, default-value)-> if !!value then value else default-value
@@ -323,17 +315,39 @@ $ ->
     $.get \/keywords, (collection-keywords)-> 
         lang-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
         
-    # load document
+    # load document & update DOM, editors
     query-id = get-query-id!
-    update-editors push-state query-id
-
-    #
-    save-to-local-storage get-document-state query-id
+    document-state = load-document-state query-id
+    history.replace-state document-state, document-state.name, "/#{query-id}#{get-query-parameters!}"
+    update-editors document-state
 
     # save to local storage as soon as the user idles for more than half a second after any keydown
-    $ window .on \keydown, _.debounce (-> save-to-local-storage get-document-state query-id), 500
+    on-key-down = ->
+
+        # do not save if we are displaying server side version
+        return if ($ \#remote-state .attr \data-state) == \server
+
+        document-state = get-document-state query-id
+        save-to-local-storage document-state
+        toggle-remote-state-button document-state
+
+    document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
+    on-key-down!
 
     # save to server 
+    on-save = (e, document-state)->
+
+        # do not save if we are displaying server side version
+        return if ($ \#remote-state .attr \data-state) == \server
+
+        [,save-function] = get-save-function document-state
+        save-function -> toggle-remote-state-button document-state
+
+        # prevent default behavious of displaying the save-dialog
+        e.prevent-default!
+        e.stop-propagation!
+        false
+
     key 'command + s', (e)-> on-save e, get-document-state query-id
     $ \#save .on \click, (e)-> on-save e, get-document-state query-id
 
@@ -348,15 +362,25 @@ $ ->
         forked-document-state.name = "Copy of #{forked-document-state.name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
         window.open "http://#{domain}/#{new-query-id}", \_blank
+    
+    $ \#remote-state .on \click, ->
+        
+        if ($ @ .attr \data-state) == \client
+            $ @ .attr \data-state, \server
+            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only true            
+            update-editors window.remote-document-state
+            
+        else
+            $ @ .attr \data-state, \client
+            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
+            update-editors JSON.parse local-storage.get-item query-id            
 
+    
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
         save-to-local-storage get-document-state query-id
         [should-save] = get-save-function get-document-state query-id
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
-
-    
-
 
 
 

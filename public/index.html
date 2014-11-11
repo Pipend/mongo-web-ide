@@ -25,15 +25,17 @@
     <body>        
         <div class="preloader" style="display: none">
             <div>Loading, please wait...</div>
-        </div>
-              
+        </div>          
         <div class="menu">
             <a class="logo" href="/list?_=<%= new Date().getTime() %>"></a>
             <a class="button" href="/" target="_blank">New</a>
             <a class="button" id="save">Save</a>
             <a class="button" id="execute-query">Execute</a>
-            <a class="button" id="fork">Fork</a>
-            <a class="toggle button" id="cache" style="display: none">Cache</a>
+            <a class="button" id="fork">Fork</a>            
+            <a class="button" id="remote-state" data-state="client">
+                <span class="client">Client</span>
+                <span class="server">Server</span>
+            </a>
         </div>
         <div class="content">
             <div class="editors">
