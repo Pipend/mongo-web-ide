@@ -65,7 +65,7 @@ get-all-keys-recursively = (object)->
 get-default-document-state = -> {name: "", query: "$limit: 5", transformation: "result", presentation: "json result"}
 
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, get-default-document-state!
+app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!}
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
@@ -84,7 +84,7 @@ app.get "/:queryId(\\d+)", (req, res)->
         ]
     remote-document-state = get-default-document-state!
     remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, remote-document-state
+    res.render \public/index.html, {remote-document-state}
     
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords, (req, res)->

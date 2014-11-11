@@ -6,15 +6,7 @@
         <link rel="stylesheet" href="/public/index.css">
         <link rel="stylesheet" href="/public/lib/nvd3/nv.d3.css">
         <script type="text/javascript">
-
-            var remoteDocumentState = null;
-
-            <% if (typeof queryId != "undefined") { %>
-                remoteDocumentState = {
-                    queryId: <%= queryId %>
-                } 
-            <% } %>
-
+            var remoteDocumentState = <%- JSON.stringify(remoteDocumentState) %>;
         </script>
         <script src="/public/lib/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
         <script src="/public/lib/ace-builds/src-noconflict/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>
@@ -46,15 +38,15 @@
         <div class="content">
             <div class="editors">
                 <div class="editor-name">
-                    <input type="text" id="name" placeholder="Enter query name here!" value="<%= name %>"/>
+                    <input type="text" id="name" placeholder="Enter query name here!"/>
                 </div>
-                <div class="editor" id="query-editor"><%= query %></div>
+                <div class="editor" id="query-editor"></div>
                 <div class="resize-handle horizontal"></div>
                 <div class="editor-name">Transformation</div>
-                <div class="editor" id="transformation-editor"><%= transformation %></div>
+                <div class="editor" id="transformation-editor"></div>
                 <div class="resize-handle horizontal"></div>
                 <div class="editor-name">Presentation</div>
-                <div class="editor" id="presentation-editor"><%= presentation %></div>
+                <div class="editor" id="presentation-editor"></div>
                 <div class="resize-handle horizontal"></div>
             </div>
             <div class="resize-handle vertical"></div>

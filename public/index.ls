@@ -285,19 +285,10 @@ $ ->
         local-document-state = local-storage.get-item query-id
         if !!local-document-state
             local-document-state = JSON.parse local-document-state
-            history.push-state local-document-state, local-document-state.name, "/#{query-id}#{query-parameters}"
-
-            # update the DOM from the local document state
-            {name, query, transformation, presentation} = history.state
-            $ \#name .val name
-            query-editor.set-value query
-            transformation-editor.set-value transformation
-            presentation-editor.set-value presentation
-            [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
+            history.push-state local-document-state, local-document-state.name, "/#{query-id}#{query-parameters}"            
 
         # load from server
         else if !!window.remote-document-state
-            window.remote-document-state <<< get-document!
             history.push-state window.remote-document-state, window.remote-document-state.name, "/#{query-id}#{query-parameters}"
             save-to-local-storage!
 
@@ -306,7 +297,14 @@ $ ->
         history.push-state document-state, document-state.name, "/#{document-state.query-id}#{query-parameters}"    
         save-to-local-storage!
     
-
+    # update the DOM from the local document state
+    {name, query, transformation, presentation} = history.state
+    $ \#name .val name
+    query-editor.set-value query
+    transformation-editor.set-value transformation
+    presentation-editor.set-value presentation
+    [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
+    
     # save to local storage as soon as the user idles for more than half a second after any keydown
     $ window .on \keydown, _.debounce save-to-local-storage, 500
 
@@ -315,7 +313,10 @@ $ ->
     $ \#save .click on-save
 
     # prevent loss of work, does not guarantee the completion of async functions    
-    window.onbeforeunload = -> save-to-local-storage!
+    window.onbeforeunload = -> 
+        save-to-local-storage!
+        [should-save] = get-save-function!
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
     # on hash change update the cache button
     on-hash-change = ->
