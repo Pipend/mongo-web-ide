@@ -2,6 +2,9 @@
 
 ## Starting the server
 
+* install gulp: 
+``` sudo npm install --global gulp ```
+
 * install the required node modules :
 ``` sudo npm install ```
 
@@ -13,7 +16,10 @@
 config =
   env: \release
   all:
-    mongo: "mongodb://127.0.0.1:27017/MobiOne-events/"
+    connection-strings: [
+      "mongodb://127.0.0.1:27017/"
+    ]
+    mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
     mongoOptions:
       auto_reconnect: true
       db:
@@ -22,17 +28,17 @@ config =
         socketOptions: 
           keepAlive: 1
     port: 3000
-    test-ips: <[127.0.0.1]>
+    test-ips: <[127.0.0.1 localhost]>
   release: {}
   preview: {}
   local:
-    mongo: "mongodb://127.0.0.1:27017/MobiOne-events/"
+    mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
 
 module.exports = config.all <<< config[config.env] <<< env: config.env
 ```
 
 * run the server
-``` ./start.sh ```
+``` gulp ```
 
 
 

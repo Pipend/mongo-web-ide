@@ -21,15 +21,19 @@ app = express!
         body = ""
         req.on \data, -> body += it 
         req.on \end, -> 
-            req <<< {body}
+            req <<< {body: JSON.parse body}
             next!
 
 query-cache = {}
 
-(err, db) <- MongoClient.connect config.mongo, config.mongoOptions
-
+(err, db) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
+
+(err, query-db) <- MongoClient.connect config.connection-strings.0, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.connection-strings.0}"
+
 
 compile-and-execute-livescript = (livescript-code, context)->
 
@@ -58,48 +62,33 @@ get-all-keys-recursively = (object)->
         return [key, "$#{key}"] ++ (get-all-keys-recursively object[key])  if typeof object[key] == \object
         [key, "$#{key}"]
 
+get-default-document-state = -> {name: "", query: "$limit: 5", transformation: "result", presentation: "json result"}
+
 # load a new document
-app.get \/, (req, res)-> 
-    res.render \public/index.html, {
-        query-id: null, 
-        name: "", 
-        query: "", 
-        transformation-code: \result, 
-        presentation-code: "json result"
-    }
+app.get \/, (req, res)-> res.render \public/index.html, get-default-document-state!
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
 
     {query-id} = req.params
 
-    (err, data) <- fs.read-file "./tmp/#{query-id}.json", \utf8
-    return die res, err.to-string! if !!err
-
-    res.render \public/index.html, {name: ""} <<< (JSON.parse data) <<< {query-id: parse-int query-id}
-
-# fork
-app.get "/fork/:queryId(\\d+)", (req, res)->
-
-    {query-id} = req.params
-    new-query-id = new Date!.get-time!
-
-    # create a new copy of the query file
-    (err, data) <- fs.read-file "./tmp/#{query-id}.json"
-    return die res, err.to-string! if !!err
-
-    data = JSON.parse data
-    data.name = "Copy of #{data.name}"
-
-    (err) <- fs.write-file "./tmp/#{new-query-id}.json", JSON.stringify data, null, 4
-    return die res, err.to-string! if !!err
-
-    # redirect the user to copy of the query
-    res.redirect "/#{new-query-id}"
-
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: 
+                    query-id: parse-int query-id
+            }
+            {
+                $sort: _id: - 1
+            }
+        ]
+    remote-document-state = get-default-document-state!
+    remote-document-state = results.0 if err is null && !!results && results.length > 0
+    res.render \public/index.html, remote-document-state
+    
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords, (req, res)->
-    (err, results) <- db.collection \events .aggregate do 
+    (err, results) <- query-db.collection \events .aggregate do 
         [
             {
                 $sort: _id: -1
@@ -111,34 +100,28 @@ app.get \/keywords, (req, res)->
     return die err, res if !!err 
     res.end JSON.stringify (get-all-keys-recursively results.0) ++ config.test-ips
 
-# list all the queries
 app.get \/list, (req, res)->
-
-    # get the files from tmp directory
-    (err, files) <- fs.readdir \./tmp
+    (err, results) <- db.collection \queries .aggregate do
+        [
+            {
+                $sort:
+                    _id: 1
+            }
+            {
+                $group:
+                    _id: \$queryId
+                    name: $last: \$name
+            }
+        ]
     return die res, err if !!err
-
-    # read each file 
-    (err, result) <- async.map do 
-        files |> filter (-> (it.index-of ".json") != -1)
-        (file, callback)->
-
-            (err, data) <- fs.read-file "./tmp/#{file}", \utf8            
-            return callback err, null if !!err 
-
-            callback null, JSON.parse data
-
-    return die res, err if !!err
-    res.render \public/list.html, {queries: result |> map ({query-id, name})-> {query-id, description: "#{name} (#{query-id})"}}
+    res.render \public/list.html, {queries: results |> map ({_id, name})-> {query-id: _id, name}}
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
 
-    body = JSON.parse req.body
-
     # return cached result if any
-    key = md5 body.query    
-    return res.end query-cache[key] if body.cache && !!query-cache[key]
+    key = md5 req.body.query    
+    return res.end query-cache[key] if req.body.cache && !!query-cache[key]
 
     # context for livescript code
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
@@ -153,31 +136,23 @@ app.post \/query, (req, res)->
     }
 
     # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript body.query, query-context <<< require \prelude-ls
+    [err, query] = compile-and-execute-livescript req.body.query, query-context <<< require \prelude-ls
     return die res, err if !!err
 
     # perform aggregation
-    (err, result) <- db.collection \events .aggregate query
+    (err, result) <- query-db.collection \events .aggregate query
     return die res, "mongodb error: #{err.to-string!}" if !!err
 
     # cache and return the response
     res.end query-cache[key] = JSON.stringify result, null, 4
     
-
-# save code to tmp directory
+# save the code to mongodb
 app.post \/save, (req, res)->
 
-    # generate a query-id (if not present in the request)
-    body = JSON.parse req.body    
-    body.query-id = new Date!.get-time! if !body.query-id
+    (err, records) <- db.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!}, {w: 1}
+    return die res, err if !!err
 
-    # save the document as json & return the query-id
-    (err) <- fs.write-file "./tmp/#{body.query-id}.json", JSON.stringify body, null, 4
-    if !!err
-        res.status 500
-        res.end JSON.stringify [err, null]
-        return
-    res.end JSON.stringify [null, body.query-id]
+    res.end JSON.stringify [null, records.0]
 
 app.listen config.port
 console.log "listening on port #{config.port}"
