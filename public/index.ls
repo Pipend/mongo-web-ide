@@ -29,7 +29,10 @@ execute-query = (->
     previous = {}
 
     (cache, query, callback)->
-        
+    
+        # TODO: fix
+        cache = false
+
         # fix livescript
         lines = query.split \\n
         lines = [0 til lines.length] 
@@ -46,10 +49,10 @@ execute-query = (->
         }
 
         # return cached response (if any)
-        # return callback previous.err, previous.result if previous.request `is-equal-to-object` request
+        return callback previous.err, previous.result if request `is-equal-to-object` previous.request
 
         query-result-promise = $.post \/query, JSON.stringify request
-            ..done (response)-> 
+            ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
 
@@ -60,35 +63,46 @@ execute-query = (->
 )!
 
 # 
-execute-query-and-display-results = ->
+execute-query-and-display-results = (->
+
+    busy = false
+
+    ->
     
-    # show preloader
-    $ \.preloader .show!        
+        return if busy
+        busy := true
 
-    # query, transform & plot 
-    {query, transformation, presentation} = get-document!
-    
-    {cache} = get-hash!        
-    (err, result) <- execute-query (!!cache && parse-bool cache), query
+        # show preloader
+        $ \.preloader .show!        
 
-    $ \.preloader .hide!
+        # query, transform & plot 
+        {query, transformation, presentation} = get-document!
+        
+        {cache} = get-hash!        
+        (err, result) <- execute-query (!!cache && parse-bool cache), query
 
-    # clear existing result
-    $ \pre .html ""
-    $ \svg .empty!
+        busy := false
 
-    display-error = (err)->
-        show-output-tag \pre
-        $ \pre .html err
+        $ \.preloader .hide!
 
-    # display the new result    
-    return display-error "query-editor error #{err}" if !!err
+        # clear existing result
+        $ \pre .html ""
+        $ \svg .empty!
 
-    [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
-    return display-error "transformer error #{err}" if !!err
+        display-error = (err)->
+            show-output-tag \pre
+            $ \pre .html err
 
-    [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
-    return display-error "presenter error #{err}" if !!err
+        # display the new result    
+        return display-error "query-editor error #{err}" if !!err
+
+        [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
+        return display-error "transformer error #{err}" if !!err
+
+        [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
+        return display-error "presenter error #{err}" if !!err
+
+)!
 
 # 
 get-document = ->
@@ -104,7 +118,6 @@ get-hash = ->
     (window.location.hash.replace \#?, "").split \& 
         |> map (.split \=) 
         |> pairs-to-obj
-
 
 # returns noop if the document hasn't changed since the last save
 get-save-function = ->
@@ -131,8 +144,7 @@ get-save-function = ->
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
-    return false if (o1 is null && !!o2) || (o2 is null && !!o1)
-    return true if o1 is null && o2 is null
+    return false if (typeof o1 == \undefined || o1 == null) || (typeof o2 == \undefined || o2 == null)
     (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
 
 # by default the keymaster plugin filters input elements
@@ -317,17 +329,17 @@ $ ->
         [should-save] = get-save-function!
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
-    # on hash change update the cache button
-    on-hash-change = ->
-        {cache} = get-hash!
-        $ \#cache .toggle-class \on, !!cache && parse-bool cache
+    # # on hash change update the cache button
+    # on-hash-change = ->
+    #     {cache} = get-hash!
+    #     $ \#cache .toggle-class \on, !!cache && parse-bool cache
 
-    window.onhashchange = on-hash-change
+    # window.onhashchange = on-hash-change
 
-    # enable caching by default
-    {cache} = get-hash!
-    set-hash {cache: true} if typeof cache is \undefined || cache is null 
-    on-hash-change!
+    # # enable caching by default
+    # {cache} = get-hash!
+    # set-hash {cache: true} if typeof cache is \undefined || cache is null 
+    # on-hash-change!
 
     $ \#cache .on \click, -> 
         {cache} = get-hash!
