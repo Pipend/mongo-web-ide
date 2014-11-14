@@ -1,11 +1,15 @@
+# React.render (auto-complete null), ($ '#query-search > div' .get 0)
+
+
 {dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
 {compile} = require \LiveScript
 
 # global variables  
 chart = null
+presentation-editor = null 
 query-editor = null
 transformation-editor = null
-presentation-editor = null 
+page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/(\\d+)(\\#\\?.*)?"
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -29,7 +33,10 @@ execute-query = (->
     previous = {}
 
     (cache, query, callback)->
-        
+    
+        # TODO: fix
+        cache = false
+
         # fix livescript
         lines = query.split \\n
         lines = [0 til lines.length] 
@@ -46,10 +53,10 @@ execute-query = (->
         }
 
         # return cached response (if any)
-        # return callback previous.err, previous.result if previous.request `is-equal-to-object` request
+        return callback previous.err, previous.result if request `is-equal-to-object` previous.request
 
         query-result-promise = $.post \/query, JSON.stringify request
-            ..done (response)-> 
+            ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
 
@@ -60,39 +67,51 @@ execute-query = (->
 )!
 
 # 
-execute-query-and-display-results = ->
+execute-query-and-display-results = (->
+
+    busy = false
+
+    (document-state)->
     
-    # show preloader
-    $ \.preloader .show!        
+        return if busy
+        busy := true
 
-    # query, transform & plot 
-    {query, transformation, presentation} = get-document!
-    
-    {cache} = get-hash!        
-    (err, result) <- execute-query (!!cache && parse-bool cache), query
+        # show preloader
+        $ \.preloader .show!        
 
-    $ \.preloader .hide!
+        # query, transform & plot 
+        {query, transformation, presentation} = document-state
+        
+        {cache} = get-hash!        
+        (err, result) <- execute-query (!!cache && parse-bool cache), query
 
-    # clear existing result
-    $ \pre .html ""
-    $ \svg .empty!
+        busy := false
 
-    display-error = (err)->
-        show-output-tag \pre
-        $ \pre .html err
+        $ \.preloader .hide!
 
-    # display the new result    
-    return display-error "query-editor error #{err}" if !!err
+        # clear existing result
+        $ \pre .html ""
+        $ \svg .empty!
 
-    [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
-    return display-error "transformer error #{err}" if !!err
+        display-error = (err)->
+            show-output-tag \pre
+            $ \pre .html err
 
-    [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
-    return display-error "presenter error #{err}" if !!err
+        # display the new result    
+        return display-error "query-editor error #{err}" if !!err
 
-# 
-get-document = ->
+        [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
+        return display-error "transformer error #{err}" if !!err
+
+        [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
+        return display-error "presenter error #{err}" if !!err
+
+)!
+
+#
+get-document-state = (query-id)->
     {
+        query-id
         name: $ \#name .val!
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
@@ -105,34 +124,49 @@ get-hash = ->
         |> map (.split \=) 
         |> pairs-to-obj
 
+#
+get-query-id = (->
+
+    result = null
+
+    (url)->
+        return result if !!result
+
+        [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
+        result := parse-int try-get query-id, new Date!.get-time!
+)!
+
+#
+get-query-parameters = ->
+    [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
+    try-get query-parameters, ""
 
 # returns noop if the document hasn't changed since the last save
-get-save-function = ->
+get-save-function = (document-state)->
 
-    # if there are no changes to the document return noop as the save function            
-    document-state = get-document! <<< {query-id: history.state.query-id}
-    return [false, $.noop] if document-state `is-equal-to-object` window.remote-document-state
+    # if there are no changes to the document return noop as the save function
+    return [false, (callback)-> callback! if !!callback] if document-state `is-equal-to-object` window.remote-document-state
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
     [
         true
-        ->        
+        (callback)->        
 
             # update the local-storage before making the request to recover from unexpected crash
-            save-to-local-storage!
+            save-to-local-storage document-state
 
-            (err) <- save-to-server
+            (err) <- save-to-server document-state
             return console.log err if !!err
 
             window.remote-document-state = document-state
+            callback! if !!callback
 
     ]
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
-    return false if (o1 is null && !!o2) || (o2 is null && !!o1)
-    return true if o1 is null && o2 is null
+    return false if (typeof o1 == \undefined || o1 == null) || (typeof o2 == \undefined || o2 == null)
     (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
 
 # by default the keymaster plugin filters input elements
@@ -144,16 +178,10 @@ keywords-from-context = (context)->
         |> obj-to-pairs 
         |> map -> dasherize it.0
 
-# save the document
-on-save = (e)->
-
-    [,save-function] = get-save-function!
-    save-function!
-
-    # prevent default behavious of displaying the save-dialog
-    e.prevent-default!
-    e.stop-propagation!
-    false
+#
+load-document-state = (query-id)->
+    state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
+    state <<< {query-id}    
 
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
@@ -188,8 +216,8 @@ run-livescript = (context, result, livescript)->
         return [error, null]
 
 # makes a POST request to the server to save the current document-object
-save-to-server = (callback)->
-    save-request-promise = $.post \/save, JSON.stringify (get-document! <<< {query-id: history.state.query-id}), null, 4
+save-to-server = (document-state, callback)->
+    save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
         ..done (response)->
             [err, document-state] = JSON.parse response
             return callback err if !!err
@@ -198,8 +226,8 @@ save-to-server = (callback)->
 
 # save document with query-id to local storage
 # putting the query-id makes it consistent with the db & makes setting up the history easier
-save-to-local-storage = -> 
-    local-storage.set-item history.state.query-id, JSON.stringify get-document! <<< {query-id: history.state.query-id}
+save-to-local-storage = (document-state)-> 
+    local-storage.set-item document-state.query-id, JSON.stringify document-state
 
 # converts an object to hash query string
 set-hash = (obj)->
@@ -214,7 +242,7 @@ show-output-tag = (tag)->
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
 
-
+#
 search-queries = (name)->
 
     (queries) <- $.get "/search?name=#{name}"
@@ -237,8 +265,25 @@ search-queries = (name)->
     all-queries = queries ++ local-queries
          |> sort-by -> - it.query-id        
 
+#
+toggle-remote-state-button = (document-state)->
+    $ \#remote-state .toggle !!window.remote-document-state.query-id
+    $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
+
+#
+try-get = (value, default-value)-> if !!value then value else default-value
+
+#
+update-editors = ({name, query, transformation, presentation})->
+    $ \#name .val name
+    query-editor.set-value query
+    transformation-editor.set-value transformation
+    presentation-editor.set-value presentation
+    [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
+
+
 # on dom ready
-$ ->    
+$ ->
 
     show-output-tag \pre
 
@@ -247,7 +292,7 @@ $ ->
     $ \.editor .height ((window.inner-height - $ \.menu .height!) - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3
     resize-output!
 
-    # change the width of the editors & the output
+    # width adjustment handle
     $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
         initial-width = $ \.editors .width!
 
@@ -258,7 +303,7 @@ $ ->
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
-    # change the height of the editors 
+    # height adjustment handle
     $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
         $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
         initial-height = $editor .height!
@@ -291,89 +336,93 @@ $ ->
                 
                 callback null, convert-to-ace-keywords mongo-keywords, \mongo, prefix
         }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context transformation-context), \transformation, prefix }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context presentation-context), \presentation, prefix }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context get-transformation-context!), \transformation, prefix }
+        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context get-presentation-context!), \presentation, prefix }
 
     # auto complete for mongo collection properties
     $.get \/keywords, (collection-keywords)-> 
         lang-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
-    
-    # load the document
-    [url, domain, query-id, query-parameters]? = window.location.href.match new RegExp "http\\:\\/\\/(.*)?\\/(\\d+)(\\#\\?.*)?"
-    query-parameters = "" if typeof query-parameters == \undefined        
-
-    if !!query-id
-
-        # load from local storage
-        local-document-state = local-storage.get-item query-id
-        if !!local-document-state
-            local-document-state = JSON.parse local-document-state
-            history.push-state local-document-state, local-document-state.name, "/#{query-id}#{query-parameters}"
-
-            # update the DOM from the local document state
-            {name, query, transformation, presentation} = history.state
-            $ \#name .val name
-            query-editor.set-value query
-            transformation-editor.set-value transformation
-            presentation-editor.set-value presentation
-            [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
-
-        # load from server
-        else if !!window.remote-document-state
-            window.remote-document-state <<< get-document!
-            history.push-state window.remote-document-state, window.remote-document-state.name, "/#{query-id}#{query-parameters}"
-            save-to-local-storage!
-
-    else 
-        document-state = get-document! <<< {query-id: new Date!.get-time!}
-        history.push-state document-state, document-state.name, "/#{document-state.query-id}#{query-parameters}"    
-        save-to-local-storage!
-    
+        
+    # load document & update DOM, editors
+    query-id = get-query-id!
+    document-state = load-document-state query-id
+    history.replace-state document-state, document-state.name, "/#{query-id}#{get-query-parameters!}"
+    update-editors document-state
 
     # save to local storage as soon as the user idles for more than half a second after any keydown
-    $ window .on \keydown, _.debounce save-to-local-storage, 500
+    on-key-down = ->
+
+        # do not save if we are displaying server side version
+        return if ($ \#remote-state .attr \data-state) == \server
+
+        document-state = get-document-state query-id
+        save-to-local-storage document-state
+        toggle-remote-state-button document-state
+
+    document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
+    on-key-down!
 
     # save to server 
-    key 'command + s', on-save
-    $ \#save .click on-save
+    on-save = (e, document-state)->
 
-    # prevent loss of work, does not guarantee the completion of async functions    
-    window.onbeforeunload = -> save-to-local-storage!
+        # do not save if we are displaying server side version
+        return if ($ \#remote-state .attr \data-state) == \server
 
-    # on hash change update the cache button
-    on-hash-change = ->
-        {cache} = get-hash!
-        $ \#cache .toggle-class \on, !!cache && parse-bool cache
+        [,save-function] = get-save-function document-state
 
-    window.onhashchange = on-hash-change
-    on-hash-change!
+        # update the difference indicator between client & server code
+        save-function -> toggle-remote-state-button document-state
 
-    $ \#cache .on \click, -> 
-        {cache} = get-hash!
-        set-hash {cache: !(!!cache && parse-bool cache)}
+        # prevent default behavious of displaying the save-dialog
+        cancel-event e
+
+    key 'command + s', (e)-> on-save e, get-document-state query-id
+    $ \#save .on \click, (e)-> on-save e, get-document-state query-id
 
     # execute the query on button click or hot key (command + enter)
-    key 'command + enter', execute-query-and-display-results
-    $ \#execute-query .on \click, execute-query-and-display-results
-
-    # execute on load
-    {execute-on-load} = get-hash!
-    execute-query-and-display-results! if !!execute-on-load && parse-bool execute-on-load
+    key 'command + enter', -> execute-query-and-display-results get-document-state query-id
+    $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state query-id
 
     # fork
     $ \#fork .on \click, ->
         new-query-id = new Date!.get-time!
-        forked-document-state = get-document! <<< {query-id: new-query-id}
+        forked-document-state = get-document-state new-query-id
         forked-document-state.name = "Copy of #{forked-document-state.name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
         window.open "http://#{domain}/#{new-query-id}", \_blank
     
+    # switch between client & server code
+    $ \#remote-state .on \click, ->
+        
+        if ($ @ .attr \data-state) == \client
+            $ @ .attr \data-state, \server
+            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only true            
+            update-editors window.remote-document-state
+            
+        else
+            $ @ .attr \data-state, \client
+            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
+            update-editors JSON.parse local-storage.get-item query-id                
     
+    # prevent loss of work, does not guarantee the completion of async functions    
+    window.onbeforeunload = -> 
+        save-to-local-storage get-document-state query-id
+        [should-save] = get-save-function get-document-state query-id
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
 
+    # query search
+    $query-search-container = $ \.query-search-container .get 0
 
+    key 'command + p, command + shift + p', (e)-> 
+        React.render (query-search {
+            on-query-selected: ({query-id})-> 
+                window.open "/#{query-id}", \_blank
+                React.unmount-component-at-node $query-search-container
+        }), $query-search-container
+        cancel-event e
 
-
+    key 'esc', -> React.unmount-component-at-node $query-search-container
 
 
 

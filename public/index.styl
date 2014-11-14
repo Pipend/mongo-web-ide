@@ -19,7 +19,25 @@ body
       text-align: center
       text-decoration: none
       user-select: none
+      -webkit-user-select: none
       vertical-align: top
+
+      &[data-state=client] 
+        span 
+          &.client
+            display: inline-block
+          &.server 
+            display: none
+
+      &[data-state=server] 
+        span 
+          &.client
+            display: none
+          &.server 
+            display: inline-block
+
+      &:active 
+        -webkit-transform: translateY(1px)
 
       &.logo
         background-image: url(/public/images/mongodb-logo.png)
@@ -33,7 +51,7 @@ body
 
       &.button
         background: linear-gradient(#4d4d4d, #2f2f2f)        
-        border-radius: 4px
+        border-radius: 8px
         border: 1px solid black
         font-size: 16px
         line-height: 56px
@@ -43,6 +61,9 @@ body
         width: 90px    
         height: 54px
       
+      &.highlight
+        border-top: 2px solid orange
+
       &.toggle.button.on 
         background: yellow !important
         color: black
@@ -126,64 +147,64 @@ body
       vertical-align: middle;
 
   .query-search
-    position: absolute
-    width: 100%
-    height: 100%
-    z-index: 1000000
-
-    .dismiss-area
       background-color: rgba(0,0,0,0.2)
       position: absolute
       width: 100%
       height: 100%
+      z-index: 1000000
 
-    > div:last-child
-      position: absolute
-      top: 10%
-      left: 50%
+      > div:last-child
+        position: absolute
+        top: 10%
+        left: 50%
 
-      > div:first-child
-        background: #666
-        max-height: 400px 
-        overflow: auto
-        padding-bottom: 1px
-        position: relative
-        left: -50%
-        width: 400px
-
-        input
-          appearance: none
-          background: white
-          border: 1px solid #ccc
-          box-sizing: border-box
-          font-size: 16px
-          line-height: 30px
-          text-indent: 4px
-          outline: none
+        > div:first-child
+          background: #666          
+          padding: 2px
           position: relative
-          left: 2px
-          top: 2px
-          height: 30px
-          width: 396px
+          left: -50%
+          width: 500px
 
-        ul
-          margin: 0px
-          padding: 0px
+          input
+            appearance: none
+            background: white
+            border: 1px solid #ccc
+            box-sizing: border-box
+            font-size: 18px
+            line-height: 30px
+            text-indent: 4px
+            outline: none
+            height: 30px
+            width: 100%
 
-          li
-            border-bottom: 1px solid rgba(0,0,0,0.5)
-            box-shadow: 0px 1px 0px rgba(255,255,255,0.5)
-            height: 24px
-            font-size: 14px
-            line-height: 24px
-            list-style: none 
-            margin-top: 4px
-            vertical-align: middle
+          ul
+            max-height: 400px 
+            margin: 0px
+            overflow: auto
+            padding: 0px
+            position: relative
 
-            a
-              margin-left: 4px
-              text-decoration: none
+            li
+              border-bottom: 1px solid rgba(0,0,0,0.5)
+              box-shadow: 0px 1px 0px rgba(255,255,255,0.5)
               color: white
+              height: 16px
+              font-size: 14px
+              line-height: 16px
+              list-style: none               
+              overflow: hidden
+              padding: 6px
+              text-overflow: ellipsis
+              vertical-align: middle
+              white-space: nowrap
+
+              &.highlight
+                background: #888
+
+              a
+                color: white
+                margin-left: 4px
+                text-decoration: none     
 
 
 

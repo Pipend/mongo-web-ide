@@ -9,12 +9,12 @@ vm = require \vm
 {concat-map, keys, map, filter} = require \prelude-ls
 {MongoClient, ObjectID} = require \mongodb
 
-app = express!
+app = express!    
     ..set \views, __dirname + \/
     ..engine \.html, (require \ejs).__express
     ..set 'view engine', \ejs    
+    ..use (require \cors)!
     ..use (require \cookie-parser)!
-    ..use "/ace-builds" express.static "#__dirname/ace-builds"
     ..use "/public" express.static "#__dirname/public"
     ..use (req, res, next)->
         return next! if req.method is not \POST
@@ -33,7 +33,6 @@ console.log "successfully connected to #{config.mongo}"
 (err, query-db) <- MongoClient.connect config.connection-strings.0, config.mongo-options
 return console.log err if !!err
 console.log "successfully connected to #{config.connection-strings.0}"
-
 
 compile-and-execute-livescript = (livescript-code, context)->
 
@@ -65,7 +64,7 @@ get-all-keys-recursively = (object)->
 get-default-document-state = -> {name: "", query: "$limit: 5", transformation: "result", presentation: "json result"}
 
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, get-default-document-state!
+app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!}
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
@@ -84,7 +83,7 @@ app.get "/:queryId(\\d+)", (req, res)->
         ]
     remote-document-state = get-default-document-state!
     remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, remote-document-state
+    res.render \public/index.html, {remote-document-state}
     
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords, (req, res)->
@@ -100,6 +99,7 @@ app.get \/keywords, (req, res)->
     return die err, res if !!err 
     res.end JSON.stringify (get-all-keys-recursively results.0) ++ config.test-ips
 
+# list all the queries
 app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [
@@ -161,9 +161,17 @@ app.get \/search, (req, res)->
             {
                 $match: name: {$regex: ".*#{req.query.name}.*", $options: \i}
             }
+            {
+                $sort: _id: 1
+            }
+            {
+                $group: 
+                    _id: \$queryId
+                    name: $last: \$name
+            }            
         ]
     return die res, err if !!err
-    res.end JSON.stringify results
+    res.end JSON.stringify (results |> map ({_id, name})-> {query-id: _id, name})
 
 app.listen config.port
 console.log "listening on port #{config.port}"
