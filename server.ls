@@ -9,12 +9,12 @@ vm = require \vm
 {concat-map, keys, map, filter} = require \prelude-ls
 {MongoClient, ObjectID} = require \mongodb
 
-app = express!
+app = express!    
     ..set \views, __dirname + \/
     ..engine \.html, (require \ejs).__express
     ..set 'view engine', \ejs    
+    ..use (require \cors)!
     ..use (require \cookie-parser)!
-    ..use "/ace-builds" express.static "#__dirname/ace-builds"
     ..use "/public" express.static "#__dirname/public"
     ..use (req, res, next)->
         return next! if req.method is not \POST
@@ -153,6 +153,25 @@ app.post \/save, (req, res)->
     return die res, err if !!err
 
     res.end JSON.stringify [null, records.0]
+
+
+app.get \/search, (req, res)->
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: name: {$regex: ".*#{req.query.name}.*", $options: \i}
+            }
+            {
+                $sort: _id: 1
+            }
+            {
+                $group: 
+                    _id: \$queryId
+                    name: $last: \$name
+            }            
+        ]
+    return die res, err if !!err
+    res.end JSON.stringify (results |> map ({_id, name})-> {query-id: _id, name})
 
 app.listen config.port
 console.log "listening on port #{config.port}"

@@ -1,4 +1,7 @@
-{dasherize, filter, fold, keys, map, obj-to-pairs, Obj, pairs-to-obj, id} = require \prelude-ls
+# React.render (auto-complete null), ($ '#query-search > div' .get 0)
+
+
+{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
 {compile} = require \LiveScript
 
 # global variables  
@@ -239,6 +242,30 @@ show-output-tag = (tag)->
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
 
+#
+search-queries = (name)->
+
+    (queries) <- $.get "/search?name=#{name}"
+
+    queries = JSON.parse queries
+
+    local-queries = [0 to local-storage.length] 
+        |> map -> local-storage.key it
+        |> filter -> !!it
+        |> map -> JSON.parse (local-storage.get-item it)
+        |> filter -> (it.name.to-lower-case!.index-of name.to-lower-case!) != -1
+
+    # filter out local-queries from remote-queries
+    # we always display the local data first
+    queries = queries
+        |> filter ({query-id})->
+            local-query = local-queries |> find -> it.query-id == query-id
+            typeof local-query == \undefined || local-query is null
+
+    all-queries = queries ++ local-queries
+         |> sort-by -> - it.query-id        
+
+#
 toggle-remote-state-button = (document-state)->
     $ \#remote-state .toggle !!window.remote-document-state.query-id
     $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
@@ -254,6 +281,7 @@ update-editors = ({name, query, transformation, presentation})->
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
 
+
 # on dom ready
 $ ->
 
@@ -264,7 +292,7 @@ $ ->
     $ \.editor .height ((window.inner-height - $ \.menu .height!) - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3
     resize-output!
 
-    # change the width of the editors & the output
+    # width adjustment handle
     $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
         initial-width = $ \.editors .width!
 
@@ -275,7 +303,7 @@ $ ->
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
-    # change the height of the editors 
+    # height adjustment handle
     $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
         $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
         initial-height = $editor .height!
@@ -341,12 +369,12 @@ $ ->
         return if ($ \#remote-state .attr \data-state) == \server
 
         [,save-function] = get-save-function document-state
+
+        # update the difference indicator between client & server code
         save-function -> toggle-remote-state-button document-state
 
         # prevent default behavious of displaying the save-dialog
-        e.prevent-default!
-        e.stop-propagation!
-        false
+        cancel-event e
 
     key 'command + s', (e)-> on-save e, get-document-state query-id
     $ \#save .on \click, (e)-> on-save e, get-document-state query-id
@@ -361,8 +389,9 @@ $ ->
         forked-document-state = get-document-state new-query-id
         forked-document-state.name = "Copy of #{forked-document-state.name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "http://#{domain}/#{new-query-id}", \_blank
+        window.open "/#{new-query-id}", \_blank
     
+    # switch between client & server code
     $ \#remote-state .on \click, ->
         
         if ($ @ .attr \data-state) == \client
@@ -373,8 +402,7 @@ $ ->
         else
             $ @ .attr \data-state, \client
             [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
-            update-editors JSON.parse local-storage.get-item query-id            
-
+            update-editors JSON.parse local-storage.get-item query-id                
     
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
@@ -383,8 +411,18 @@ $ ->
         return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
 
 
+    # query search
+    $query-search-container = $ \.query-search-container .get 0
 
+    key 'command + p, command + shift + p', (e)-> 
+        React.render (query-search {
+            on-query-selected: ({query-id})-> 
+                window.open "/#{query-id}", \_blank
+                React.unmount-component-at-node $query-search-container
+        }), $query-search-container
+        cancel-event e
 
+    key 'esc', -> React.unmount-component-at-node $query-search-container
 
 
 
