@@ -389,7 +389,7 @@ $ ->
         forked-document-state = get-document-state new-query-id
         forked-document-state.name = "Copy of #{forked-document-state.name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "http://#{domain}/#{new-query-id}", \_blank
+        window.open "/#{new-query-id}", \_blank
     
     # switch between client & server code
     $ \#remote-state .on \click, ->
