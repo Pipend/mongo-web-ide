@@ -1,6 +1,3 @@
-# React.render (auto-complete null), ($ '#query-search > div' .get 0)
-
-
 {dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
 {compile} = require \LiveScript
 
@@ -134,6 +131,7 @@ get-query-id = (->
 
         [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
         result := parse-int try-get query-id, new Date!.get-time!
+
 )!
 
 #
@@ -280,7 +278,6 @@ update-editors = ({name, query, transformation, presentation})->
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
-
 
 # on dom ready
 $ ->
