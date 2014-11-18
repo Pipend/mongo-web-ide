@@ -29,7 +29,7 @@ execute-query = (->
 
     previous = {}
 
-    (cache, query, callback)->
+    (query, server-name, database, collection, cache, callback)->
     
         # TODO: fix
         cache = false
@@ -44,9 +44,12 @@ execute-query = (->
                 line
 
         # compose request object
-        request = {
-            cache
+        request = {            
+            server-name
+            database
+            collection
             query: "[#{lines.join '\n'}]"
+            cache
         }
 
         # return cached response (if any)
@@ -77,10 +80,10 @@ execute-query-and-display-results = (->
         $ \.preloader .show!        
 
         # query, transform & plot 
-        {query, transformation, presentation} = document-state
+        {server-name, database, collection, query, transformation, presentation} = document-state
         
         {cache} = get-hash!        
-        (err, result) <- execute-query (!!cache && parse-bool cache), query
+        (err, result) <- execute-query query, server-name, database, collection, (!!cache && parse-bool cache)
 
         busy := false
 
@@ -109,7 +112,10 @@ execute-query-and-display-results = (->
 get-document-state = (query-id)->
     {
         query-id
-        name: $ \#name .val!
+        query-name: $ \#query-name .val!
+        server-name: $ \#server-name .val!
+        database: $ \#database .val!
+        collection: $ \#collection .val!
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
         presentation: presentation-editor.get-value!
@@ -272,8 +278,11 @@ toggle-remote-state-button = (document-state)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 #
-update-editors = ({name, query, transformation, presentation})->
-    $ \#name .val name
+update-editors = ({query-name, server-name, database, collection, query, transformation, presentation})->
+    $ \#query-name .val query-name
+    $ \#server-name .val server-name
+    $ \#database .val database
+    $ \#collection .val collection
     query-editor.set-value query
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
@@ -286,7 +295,9 @@ $ ->
 
     # setup the initial size
     $ \.editors .width window.inner-width * 0.4
-    $ \.editor .height ((window.inner-height - $ \.menu .height!) - 3 * ($ \.editor-name .height! + $ \.resize-handle.horizontal .height! + 1)) / 3
+    empty-space = (window.inner-height - $ \.menu .outer-height!) - 4 * ($ \.editor-name .outer-height! + $ \.resize-handle.horizontal .outer-height!) - $ \.details .outer-height!
+    $ \.editor .height empty-space / 3
+
     resize-output!
 
     # width adjustment handle
@@ -302,7 +313,7 @@ $ ->
 
     # height adjustment handle
     $ \.resize-handle.horizontal .unbind \mousedown .bind \mousedown, (e1)->
-        $editor = $ e1.original-event.current-target .prev-all! .filter \.editor:first
+        $editor = $ e1.original-event.current-target .prev-all! .filter \div:first
         initial-height = $editor .height!
 
         $ window .unbind \mousemove .bind \mousemove, (e2)-> 

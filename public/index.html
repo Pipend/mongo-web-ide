@@ -44,17 +44,40 @@
         </div>
         <div class="content">
             <div class="editors">
-                <div class="editor-name">
-                    <input type="text" id="name" placeholder="Enter query name here!"/>
+
+                <div class="editor-name">Details</div>
+                <div class="details">
+                    <div>
+                        <label>Query name</label>
+                        <input type="text" id="query-name"/>
+                    </div>
+                    <div>
+                        <label>Server name</label>
+                        <input type="text" id="server-name"/>
+                    </div>
+                    <div>
+                        <label>Database</label>
+                        <input type="text" id="database"/>
+                    </div>
+                    <div>
+                        <label>Collection</label>
+                        <input type="text" id="collection"/>
+                    </div>
                 </div>
+                <div class="resize-handle horizontal"></div>
+                
+                <div class="editor-name">Query</div>
                 <div class="editor" id="query-editor"></div>
                 <div class="resize-handle horizontal"></div>
+
                 <div class="editor-name">Transformation</div>
                 <div class="editor" id="transformation-editor"></div>
                 <div class="resize-handle horizontal"></div>
+
                 <div class="editor-name">Presentation</div>
                 <div class="editor" id="presentation-editor"></div>
                 <div class="resize-handle horizontal"></div>
+
             </div>
             <div class="resize-handle vertical"></div>
             <div class="output">
