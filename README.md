@@ -14,10 +14,14 @@
 * create ``` ./config.ls ``` with the following contents :
 ```
 config =
-  env: \release
+  env: \local
   all:
     connection-strings: [
-      "mongodb://127.0.0.1:27017/"
+      {
+        name: \local
+        host: \127.0.0.1
+        port: 27017
+      }
     ]
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
     mongoOptions:

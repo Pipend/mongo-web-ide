@@ -6,8 +6,8 @@ md5 = require \MD5
 moment = require \moment
 vm = require \vm 
 {compile} = require \LiveScript
-{concat-map, keys, map, filter} = require \prelude-ls
-{MongoClient, ObjectID} = require \mongodb
+{concat-map, dasherize, filter, find, keys, map} = require \prelude-ls
+{MongoClient, ObjectID, Server} = require \mongodb
 
 app = express!    
     ..set \views, __dirname + \/
@@ -30,9 +30,9 @@ query-cache = {}
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
 
-(err, query-db) <- MongoClient.connect config.connection-strings.0, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.connection-strings.0}"
+# (err, query-db) <- MongoClient.connect config.connection-strings.0, config.mongo-options
+# return console.log err if !!err
+# console.log "successfully connected to #{config.connection-strings.0}"
 
 compile-and-execute-livescript = (livescript-code, context)->
 
@@ -55,13 +55,25 @@ die = (res, err)->
     res.status 500
     res.end err
 
-get-all-keys-recursively = (object)->
+get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
-        return [] if typeof object[key] == \function
-        return [key, "$#{key}"] ++ (get-all-keys-recursively object[key])  if typeof object[key] == \object
-        [key, "$#{key}"]
+        return [] if !filter-function key, object[key]
+        return [key] ++ (get-all-keys-recursively object[key], filter-function)  if typeof object[key] == \object
+        [key]
 
 get-default-document-state = -> {name: "", query: "$limit: 5", transformation: "result", presentation: "json result"}
+
+get-query-context = ->
+    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
+    parse-date = (s) -> new Date s
+    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
+    {
+        object-id: ObjectID
+        bucketize
+        timestamp-to-day: bucketize 86400000
+        today: today!
+        parse-date
+    }
 
 # load a new document
 app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!}
@@ -84,9 +96,12 @@ app.get "/:queryId(\\d+)", (req, res)->
     remote-document-state = get-default-document-state!
     remote-document-state = results.0 if err is null && !!results && results.length > 0
     res.render \public/index.html, {remote-document-state}
-    
+
 # extract keywords from the latest record (for auto-completion)
-app.get \/keywords, (req, res)->
+app.get \/keywords/queryContext, (req, res)->
+    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+
+app.get \/keywords/:serverName/:database/:collection, (req, res)->
     (err, results) <- query-db.collection \events .aggregate do 
         [
             {
@@ -96,8 +111,9 @@ app.get \/keywords, (req, res)->
                 $limit: 1
             }
         ]
-    return die err, res if !!err 
-    res.end JSON.stringify (get-all-keys-recursively results.0) ++ config.test-ips
+    return die err, res if !!err     
+    collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
+    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
 # list all the queries
 app.get \/list, (req, res)->
@@ -110,37 +126,38 @@ app.get \/list, (req, res)->
             {
                 $group:
                     _id: \$queryId
-                    name: $last: \$name
+                    query-name: $last: \$queryName
             }
         ]
     return die res, err if !!err
-    res.render \public/list.html, {queries: results |> map ({_id, name})-> {query-id: _id, name}}
+    res.render \public/list.html, {queries: results |> map ({_id, query-name})-> {query-id: _id, query-name}}
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
 
-    # return cached result if any
-    key = md5 req.body.query    
-    return res.end query-cache[key] if req.body.cache && !!query-cache[key]
+    {cache, server-name, database, collection, query} = req.body    
 
-    # context for livescript code
-    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
-    parse-date = (s) -> new Date s
-    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
-    query-context = {
-        object-id: ObjectID
-        bucketize
-        timestamp-to-day: bucketize 86400000
-        today: today!
-        parse-date
-    }
+    # return cached result if any
+    key = md5 query    
+    return res.end query-cache[key] if cache && !!query-cache[key]
 
     # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript req.body.query, query-context <<< require \prelude-ls
+    [err, query] = compile-and-execute-livescript req.body.query, get-query-context! <<< require \prelude-ls
     return die res, err if !!err
 
-    # perform aggregation
-    (err, result) <- query-db.collection \events .aggregate query
+    # retrieve the connection string from config
+    connection-string = config.connection-strings |> find (.name == server-name)
+    return die res, "server name not found" if typeof connection-string == \undefined
+
+    # connect to mongo server
+    server = new Server connection-string.host, connection-string.port
+    mongo-client = new MongoClient server, {native_parser: true}
+    (err, mongo-client) <- mongo-client.open 
+    return die res, err if !!err
+
+    # perform aggregation & close db connection
+    (err, result) <- mongo-client.db database .collection collection .aggregate query
+    mongo-client.close!
     return die res, "mongodb error: #{err.to-string!}" if !!err
 
     # cache and return the response
@@ -154,7 +171,7 @@ app.post \/save, (req, res)->
 
     res.end JSON.stringify [null, records.0]
 
-
+# query search based on name
 app.get \/search, (req, res)->
     (err, results) <- db.collection \queries .aggregate do 
         [
