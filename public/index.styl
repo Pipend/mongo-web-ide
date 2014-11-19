@@ -3,6 +3,41 @@ body
   margin: 0px
   padding: 0px
   
+  .details
+    background: linear-gradient(#454545, #222)
+    box-shadow: 0 2px 12px black
+    color: white;    
+    font-size: 14px
+    overflow: auto
+    padding: 20px      
+    position: absolute
+    top: 64px
+    width: 320px
+    z-index: 1000
+
+    div 
+      margin-bottom: 8px
+
+    input
+        border: none;
+        box-sizing: border-box
+        color: black
+        font-size: 12px
+        margin: 0px
+        outline: none
+        padding: 5px
+        vertical-align: middle
+        width: 70%
+      
+      label
+        display: inline-block
+        text-align: right
+        width: 90px
+
+        &:after
+          content: " :"
+          margin-right: 2px
+
   .menu 
     background: linear-gradient(#111, #222)
     border-bottom: 1px solid rgba(255,255,255,0.2)   
@@ -76,35 +111,6 @@ body
     > div
       display: inline-block
       vertical-align: top
-
-    .details
-      color: white;    
-      font-size: 14px
-      overflow: auto
-      padding: 8px
-
-      > div
-        margin-bottom: 8px
-
-      input
-        border: none;
-        box-sizing: border-box
-        color: black
-        font-size: 12px
-        margin: 0px
-        outline: none
-        padding: 5px
-        vertical-align: middle
-        width: 70%
-      
-      label
-        display: inline-block
-        text-align: right
-        width: 90px
-
-        &:after
-          content: " :"
-          margin-right: 2px
 
     .editors
       overflow: auto
