@@ -9,7 +9,7 @@ vm = require \vm
 {concat-map, dasherize, filter, find, keys, map} = require \prelude-ls
 {MongoClient, ObjectID, Server} = require \mongodb
 
-app = express!    
+app = express!
     ..set \views, __dirname + \/
     ..engine \.html, (require \ejs).__express
     ..set 'view engine', \ejs    
@@ -29,10 +29,6 @@ query-cache = {}
 (err, db) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
-
-# (err, query-db) <- MongoClient.connect config.connection-strings.0, config.mongo-options
-# return console.log err if !!err
-# console.log "successfully connected to #{config.connection-strings.0}"
 
 compile-and-execute-livescript = (livescript-code, context)->
 
@@ -98,10 +94,20 @@ app.get "/:queryId(\\d+)", (req, res)->
     remote-document-state = results.0 if err is null && !!results && results.length > 0
     res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
 
+#
+app.get "/delete/:queryId", (req, res)->
+    (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
+    return die res, err if !!err    
+
+    console.log \updated, updated
+
+    res.end!
+
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res)->
     res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
+#
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
     (err, results) <- query-db.collection \events .aggregate do 
         [
@@ -120,6 +126,10 @@ app.get \/keywords/:serverName/:database/:collection, (req, res)->
 app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [
+            {
+                $match:
+                    status: true
+            }
             {
                 $sort:
                     _id: 1
@@ -167,7 +177,7 @@ app.post \/query, (req, res)->
 # save the code to mongodb
 app.post \/save, (req, res)->
 
-    (err, records) <- db.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!}, {w: 1}
+    (err, records) <- db.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, status: true}, {w: 1}
     return die res, err if !!err
 
     res.end JSON.stringify [null, records.0]

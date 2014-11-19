@@ -406,8 +406,14 @@ $ ->
         window.open "/#{new-query-id}", \_blank
     
     # info
-    $ \#info .on \click, (e)->
-        $ \.details .toggle!
+    $ \#info .on \click, -> $ \.details .toggle!
+
+    # delete
+    $ \#delete .on \click, -> 
+        <- $.get "/delete/#{query-id}"
+        local-storage.remove-item "#{query-id}"
+        window.onbeforeunload = $.noop!
+        window.location.href = "list?_=#{new Date!.get-time!}"
 
     # switch between client & server code
     $ \#remote-state .on \click, ->
