@@ -23,6 +23,11 @@ config =
         port: 27017
       }
     ]
+    default-connection-details: {
+      server-name: \local
+      database: \YourDBName
+      collection: \YourCollectionName
+    }
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
     mongoOptions:
       auto_reconnect: true
