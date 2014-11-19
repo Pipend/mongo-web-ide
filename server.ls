@@ -176,7 +176,7 @@ app.get \/search, (req, res)->
     (err, results) <- db.collection \queries .aggregate do 
         [
             {
-                $match: name: {$regex: ".*#{req.query.name}.*", $options: \i}
+                $match: query-name: {$regex: ".*#{req.query.name}.*", $options: \i}
             }
             {
                 $sort: _id: 1
@@ -184,11 +184,11 @@ app.get \/search, (req, res)->
             {
                 $group: 
                     _id: \$queryId
-                    name: $last: \$name
+                    query-name: $last: \$queryName
             }            
         ]
     return die res, err if !!err
-    res.end JSON.stringify (results |> map ({_id, name})-> {query-id: _id, name})
+    res.end JSON.stringify (results |> map ({_id, query-name})-> {query-id: _id, query-name})
 
 app.listen config.port
 console.log "listening on port #{config.port}"

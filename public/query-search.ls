@@ -12,7 +12,7 @@ window.query-search = React.create-class do
                     $ul null,
                         [0 til queries.length] |> map ->
                             $li {} <<< if current-index == it then {class-name: \highlight} else {},
-                                $a {href: "http://localhost:3000/#{queries[it].query-id}"}, "#{queries[it].name} (#{queries[it].query-id})"
+                                $a {href: "http://localhost:3000/#{queries[it].query-id}"}, "#{queries[it].query-name} (#{queries[it].query-id})"
 
     component-did-mount: -> 
         @on-input!
@@ -50,7 +50,7 @@ window.query-search = React.create-class do
                 |> map -> local-storage.key it
                 |> filter -> !!it
                 |> map -> JSON.parse (local-storage.get-item it)
-                |> filter -> (it.name.to-lower-case!.index-of name.to-lower-case!) != -1
+                |> filter -> (it.query-name.to-lower-case!.index-of name.to-lower-case!) != -1
 
             queries = queries
                 |> filter ({query-id})->
@@ -58,7 +58,8 @@ window.query-search = React.create-class do
                     typeof local-query == \undefined
 
             all-queries = queries ++ local-queries
-                |> map -> it <<< {match-index: it.name.to-lower-case!.index-of name.to-lower-case!}
+                |> filter -> !!it?.query-name
+                |> map -> it <<< {match-index: it.query-name.to-lower-case!.index-of name.to-lower-case!}
                 |> sort-by (.match-index)
 
             callback all-queries
