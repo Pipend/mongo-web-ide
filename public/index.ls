@@ -278,6 +278,10 @@ toggle-remote-state-button = (document-state)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 #
+update-details-position = ->
+    $ \.details .css \left, ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
+
+#
 update-editors = ({query-name, server-name, database, collection, query, transformation, presentation})->
     $ \#query-name .val query-name
     $ \#server-name .val server-name
@@ -295,8 +299,9 @@ $ ->
 
     # setup the initial size
     $ \.editors .width window.inner-width * 0.4
-    empty-space = (window.inner-height - $ \.menu .outer-height!) - 4 * ($ \.editor-name .outer-height! + $ \.resize-handle.horizontal .outer-height!) - $ \.details .outer-height!
+    empty-space = (window.inner-height - $ \.menu .outer-height!) - 3 * ($ \.editor-name .outer-height! + $ \.resize-handle.horizontal .outer-height!)
     $ \.editor .height empty-space / 3
+    update-details-position!
 
     resize-output!
 
@@ -326,6 +331,7 @@ $ ->
     # resize the chart on window resize
     window.onresize = ->
         resize-output!
+        update-details-position!
         chart.update! if !!chart
 
     # create the editors
@@ -399,6 +405,10 @@ $ ->
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
         window.open "/#{new-query-id}", \_blank
     
+    # info
+    $ \#info .on \click, (e)->
+        $ \.details .toggle!
+
     # switch between client & server code
     $ \#remote-state .on \click, ->
         

@@ -61,7 +61,8 @@ get-all-keys-recursively = (object, filter-function)->
         return [key] ++ (get-all-keys-recursively object[key], filter-function)  if typeof object[key] == \object
         [key]
 
-get-default-document-state = -> {name: "", query: "$limit: 5", transformation: "result", presentation: "json result"}
+get-default-document-state = -> 
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"}
 
 get-query-context = ->
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
@@ -76,7 +77,7 @@ get-query-context = ->
     }
 
 # load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!}
+app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
 
 # load an existing document
 app.get "/:queryId(\\d+)", (req, res)->
@@ -95,7 +96,7 @@ app.get "/:queryId(\\d+)", (req, res)->
         ]
     remote-document-state = get-default-document-state!
     remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, {remote-document-state}
+    res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res)->
