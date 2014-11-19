@@ -348,7 +348,7 @@ $ ->
         ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context get-presentation-context!), \presentation, prefix }
 
     # auto complete for mongo collection properties
-    $.get \/keywords, (collection-keywords)-> 
+    $.get "/keywords/queryContext", (collection-keywords)-> 
         lang-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
         
     # load document & update DOM, editors

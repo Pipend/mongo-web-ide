@@ -98,7 +98,10 @@ app.get "/:queryId(\\d+)", (req, res)->
     res.render \public/index.html, {remote-document-state}
 
 # extract keywords from the latest record (for auto-completion)
-app.get \/keywords, (req, res)->
+app.get \/keywords/queryContext, (req, res)->
+    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+
+app.get \/keywords/:serverName/:database/:collection, (req, res)->
     (err, results) <- query-db.collection \events .aggregate do 
         [
             {
@@ -110,7 +113,7 @@ app.get \/keywords, (req, res)->
         ]
     return die err, res if !!err     
     collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
-    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}") ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
 # list all the queries
 app.get \/list, (req, res)->
