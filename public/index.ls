@@ -23,6 +23,22 @@ convert-to-ace-keywords = (keywords, meta, prefix)->
         |> filter -> it.text.index-of(prefix) == 0 
         |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
 
+#
+convert-query-to-valid-livescript = (query)->
+
+    lines = query.split \\n
+        |> filter -> 
+            line = it.trim!
+            !(line.length == 0 || line.0 == \#)
+
+    lines = [0 til lines.length] 
+        |> map (i)-> 
+            line = lines[i]
+            line = (if i > 0 then "},{" else "") + line if line.0 == \$
+            line
+
+    "[{#{lines.join '\n'}}]"
+
 # makes a POST request the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
 execute-query = (->
@@ -33,22 +49,14 @@ execute-query = (->
     
         # TODO: fix
         cache = false
-
-        # fix livescript
-        lines = query.split \\n
-        lines = [0 til lines.length] 
-            |> map (i)-> 
-                line = lines[i]
-                line = (if i > 0 then "}," else "") + \{ + line if line.0 == \$
-                line += \} if i == lines.length - 1
-                line
+        query = convert-query-to-valid-livescript query
 
         # compose request object
         request = {            
             server-name
             database
             collection
-            query: "[#{lines.join '\n'}]"
+            query
             cache
         }
 
@@ -197,7 +205,7 @@ plot-chart = (chart, result)->
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
 
 # update the size of elements based on editor & window width & height
-resize-output = ->
+resize = ->
     $ \.output .width window.inner-width - ($ \.editors .width!) - ($ \.resize-handle.vertical .width!)
     $ \.output .height window.inner-height - ($ \.menu .height!)
     $ "pre, svg" .width ($ \.output .width!)
@@ -207,6 +215,7 @@ resize-output = ->
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
         ..width ($ \.output .width!)
         ..height ($ \.output .height!)    
+    $ \.details .css \left, ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
     chart.update! if !!chart
 
 # compiles & executes livescript
@@ -276,10 +285,6 @@ toggle-remote-state-button = (document-state)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 #
-update-details-position = ->
-    $ \.details .css \left, ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
-
-#
 update-dom-with-document-state = ({query-name, server-name, database, collection, query, transformation, presentation})->
     document.title = query-name
     $ \#query-name .val query-name
@@ -300,9 +305,8 @@ $ ->
     $ \.editors .width window.inner-width * 0.4
     empty-space = (window.inner-height - $ \.menu .outer-height!) - 3 * ($ \.editor-name .outer-height! + $ \.resize-handle.horizontal .outer-height!)
     $ \.editor .height empty-space / 3
-    update-details-position!
 
-    resize-output!
+    resize!
 
     # width adjustment handle
     $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
@@ -328,10 +332,7 @@ $ ->
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
     # resize the chart on window resize
-    window.onresize = ->
-        resize-output!
-        update-details-position!
-        chart.update! if !!chart
+    window.onresize = resize
 
     # create the editors
     query-editor := create-livescript-editor \query-editor
@@ -403,7 +404,7 @@ $ ->
     $ \#fork .on \click, ->
         new-query-id = new Date!.get-time!
         forked-document-state = get-document-state new-query-id
-        forked-document-state.name = "Copy of #{forked-document-state.name}"
+        forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
         window.open "/#{new-query-id}", \_blank
     
