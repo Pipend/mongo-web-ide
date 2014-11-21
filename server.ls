@@ -143,14 +143,17 @@ app.get \/list, (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
 
-    {cache, server-name, database, collection, query} = req.body    
+    {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
 
     # return cached result if any
     key = md5 query    
-    return res.end query-cache[key] if cache && !!query-cache[key]
+    return res.end query-cache[key] if cache and !!query-cache[key]
+
+    [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+    return die res, err if !!err
 
     # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript req.body.query, get-query-context! <<< require \prelude-ls
+    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
     return die res, err if !!err
 
     # retrieve the connection string from config
