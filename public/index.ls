@@ -60,9 +60,7 @@ execute-query = (->
                 previous <<< {request, err: null, result: response}
                 callback null, response
 
-            ..fail ({response-text}) -> 
-                previous <<< {request, err: response-text, result: null}
-                callback response-text, null
+            ..fail ({response-text}) -> callback response-text, null
 
 )!
 
@@ -282,7 +280,8 @@ update-details-position = ->
     $ \.details .css \left, ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
 
 #
-update-editors = ({query-name, server-name, database, collection, query, transformation, presentation})->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, transformation, presentation})->
+    document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
     $ \#database .val database
@@ -361,7 +360,10 @@ $ ->
     query-id = get-query-id!
     document-state = load-document-state query-id
     history.replace-state document-state, document-state.name, "/#{query-id}#{get-query-parameters!}"
-    update-editors document-state
+    update-dom-with-document-state document-state
+
+    # update document title with query-name
+    $ \#query-name .on \input, -> document.title = $ @ .val!
 
     # save to local storage as soon as the user idles for more than half a second after any keydown
     on-key-down = ->
@@ -421,12 +423,12 @@ $ ->
         if ($ @ .attr \data-state) == \client
             $ @ .attr \data-state, \server
             [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only true            
-            update-editors window.remote-document-state
+            update-dom-with-document-state window.remote-document-state
             
         else
             $ @ .attr \data-state, \client
             [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
-            update-editors JSON.parse local-storage.get-item query-id                
+            update-dom-with-document-state JSON.parse local-storage.get-item query-id                
     
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
