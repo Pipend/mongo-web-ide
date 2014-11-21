@@ -127,10 +127,6 @@ app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [
             {
-                $match:
-                    status: true
-            }
-            {
                 $sort:
                     _id: 1
             }
@@ -138,10 +134,11 @@ app.get \/list, (req, res)->
                 $group:
                     _id: \$queryId
                     query-name: $last: \$queryName
+                    status: $last: \$status
             }
         ]
     return die res, err if !!err
-    res.render \public/list.html, {queries: results |> map ({_id, query-name})-> {query-id: _id, query-name}}
+    res.render \public/list.html, {queries: results |> map ({_id, query-name, status})-> {query-id: _id, query-name, status}}
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/query, (req, res)->
@@ -187,7 +184,9 @@ app.get \/search, (req, res)->
     (err, results) <- db.collection \queries .aggregate do 
         [
             {
-                $match: query-name: {$regex: ".*#{req.query.name}.*", $options: \i}
+                $match: 
+                    query-name: {$regex: ".*#{req.query.name}.*", $options: \i}
+                    status: true
             }
             {
                 $sort: _id: 1
