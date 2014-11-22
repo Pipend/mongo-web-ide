@@ -72,29 +72,10 @@ get-query-context = ->
         parse-date
     }
 
-# load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+# display a list of all queries
+app.get \/, (req, res)-> res.render \public/query-list.html, {}
 
-# load an existing document
-app.get "/:queryId(\\d+)", (req, res)->
-
-    {query-id} = req.params
-
-    (err, results) <- db.collection \queries .aggregate do 
-        [
-            {
-                $match: 
-                    query-id: parse-int query-id
-            }
-            {
-                $sort: _id: - 1
-            }
-        ]
-    remote-document-state = get-default-document-state!
-    remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
-
-#
+# set the status property of the query to false
 app.get "/delete/:queryId", (req, res)->
     (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
     return die res, err if !!err    
@@ -103,45 +84,8 @@ app.get "/delete/:queryId", (req, res)->
 
     res.end!
 
-# extract keywords from the latest record (for auto-completion)
-app.get \/keywords/queryContext, (req, res)->
-    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
-
-#
-app.get \/keywords/:serverName/:database/:collection, (req, res)->
-    (err, results) <- query-db.collection \events .aggregate do 
-        [
-            {
-                $sort: _id: -1
-            }
-            {
-                $limit: 1
-            }
-        ]
-    return die err, res if !!err     
-    collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
-    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
-
-# list all the queries
-app.get \/list, (req, res)->
-    (err, results) <- db.collection \queries .aggregate do
-        [
-            {
-                $sort:
-                    _id: 1
-            }
-            {
-                $group:
-                    _id: \$queryId
-                    query-name: $last: \$queryName
-                    status: $last: \$status
-            }
-        ]
-    return die res, err if !!err
-    res.render \public/list.html, {queries: results |> map ({_id, query-name, status})-> {query-id: _id, query-name, status}}
-
 # transpile livescript, execute the mongo aggregate query and return the results
-app.post \/query, (req, res)->
+app.post \/execute, (req, res)->
 
     {cache, server-name, database, collection, query} = req.body    
 
@@ -170,7 +114,71 @@ app.post \/query, (req, res)->
 
     # cache and return the response
     res.end query-cache[key] = JSON.stringify result, null, 4
+
+# extract keywords from the latest record (for auto-completion)
+app.get \/keywords/queryContext, (req, res)->
+    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+
+# TODO: implement
+app.get \/keywords/:serverName/:database/:collection, (req, res)->
+    (err, results) <- query-db.collection \events .aggregate do 
+        [
+            {
+                $sort: _id: -1
+            }
+            {
+                $limit: 1
+            }
+        ]
+    return die err, res if !!err     
+    collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
+    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
+
+# return a list of all queries
+app.get \/list, (req, res)->
+    search-string = req.query?.name or ""
+    (err, results) <- db.collection \queries .aggregate do
+        [
+            {
+                $match: 
+                    query-name: {$regex: ".*#{search-string}.*", $options: \i}
+            }
+            {
+                $sort:
+                    _id: 1
+            }
+            {
+                $group:
+                    _id: \$queryId
+                    query-name: $last: \$queryName
+                    status: $last: \$status
+            }
+        ]
+    return die res, err if !!err
+    res.end JSON.stringify results
     
+# load a new document
+app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+
+# load an existing document
+app.get "/query/:queryId(\\d+)", (req, res)->
+
+    {query-id} = req.params
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: 
+                    query-id: parse-int query-id
+            }
+            {
+                $sort: _id: - 1
+            }
+        ]
+    remote-document-state = get-default-document-state!
+    remote-document-state = results.0 if err is null && !!results && results.length > 0
+    res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
+
 # save the code to mongodb
 app.post \/save, (req, res)->
 
@@ -178,27 +186,6 @@ app.post \/save, (req, res)->
     return die res, err if !!err
 
     res.end JSON.stringify [null, records.0]
-
-# query search based on name
-app.get \/search, (req, res)->
-    (err, results) <- db.collection \queries .aggregate do 
-        [
-            {
-                $match: 
-                    query-name: {$regex: ".*#{req.query.name}.*", $options: \i}
-                    status: true
-            }
-            {
-                $sort: _id: 1
-            }
-            {
-                $group: 
-                    _id: \$queryId
-                    query-name: $last: \$queryName
-            }            
-        ]
-    return die res, err if !!err
-    res.end JSON.stringify (results |> map ({_id, query-name})-> {query-id: _id, query-name})
 
 app.listen config.port
 console.log "listening on port #{config.port}"

@@ -23,7 +23,8 @@ convert-to-ace-keywords = (keywords, meta, prefix)->
         |> filter -> it.text.index-of(prefix) == 0 
         |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
 
-#
+# filters out empty lines and lines that begin with comment
+# also encloses the query objects in a collection
 convert-query-to-valid-livescript = (query)->
 
     lines = query.split \\n
@@ -39,7 +40,7 @@ convert-query-to-valid-livescript = (query)->
 
     "[{#{lines.join '\n'}}]"
 
-# makes a POST request the server and returns the result of the mongo query
+# makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
 execute-query = (->
 
@@ -72,7 +73,7 @@ execute-query = (->
 
 )!
 
-# 
+# uses the execute-query function and presents the results after apply the transformation
 execute-query-and-display-results = (->
 
     busy = false
@@ -114,7 +115,7 @@ execute-query-and-display-results = (->
 
 )!
 
-#
+# gets the documetn state from the dom elements
 get-document-state = (query-id)->
     {
         query-id
@@ -133,7 +134,7 @@ get-hash = ->
         |> map (.split \=) 
         |> pairs-to-obj
 
-#
+# gets the query id from the url
 get-query-id = (->
 
     result = null
@@ -146,7 +147,7 @@ get-query-id = (->
 
 )!
 
-#
+# gets the query parameters from the url
 get-query-parameters = ->
     [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
     try-get query-parameters, ""
@@ -188,7 +189,7 @@ keywords-from-context = (context)->
         |> obj-to-pairs 
         |> map -> dasherize it.0
 
-#
+# tries to load the document state from local-storage on failure returns the remote document state
 load-document-state = (query-id)->
     state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
     state <<< {query-id}    
@@ -248,43 +249,21 @@ set-hash = (obj)->
         |> (.join \&)
         |> -> "#?#{it}"
 
-# 
+# toggle between pre (for json & table) and svg (for charts)
 show-output-tag = (tag)-> 
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
 
-#
-search-queries = (name)->
-
-    (queries) <- $.get "/search?name=#{name}"
-
-    queries = JSON.parse queries
-
-    local-queries = [0 to local-storage.length] 
-        |> map -> local-storage.key it
-        |> filter -> !!it
-        |> map -> JSON.parse (local-storage.get-item it)
-        |> filter -> (it.name.to-lower-case!.index-of name.to-lower-case!) != -1
-
-    # filter out local-queries from remote-queries
-    # we always display the local data first
-    queries = queries
-        |> filter ({query-id})->
-            local-query = local-queries |> find -> it.query-id == query-id
-            typeof local-query == \undefined || local-query is null
-
-    all-queries = queries ++ local-queries
-         |> sort-by -> - it.query-id        
-
-#
+# the state button is only visible when there is copy of the query on the server
+# the highlight on the state button indicates the client version differs the server version
 toggle-remote-state-button = (document-state)->
     $ \#remote-state .toggle !!window.remote-document-state.query-id
     $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
 
-#
+# a convenience function
 try-get = (value, default-value)-> if !!value then value else default-value
 
-#
+# update the editors, document.title etc using the document-state (persisted to local-storage and server)
 update-dom-with-document-state = ({query-name, server-name, database, collection, query, transformation, presentation})->
     document.title = query-name
     $ \#query-name .val query-name
