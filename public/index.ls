@@ -6,6 +6,7 @@ chart = null
 presentation-editor = null 
 query-editor = null
 transformation-editor = null
+parameters-editor = null
 page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/(\\d+)(\\#\\?.*)?"
 
 # creates, configures & returns a new instance of ace-editor
@@ -41,11 +42,11 @@ convert-query-to-valid-livescript = (query)->
 
 # makes a POST request the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
-execute-query = (->
+execute-query = do ->
 
     previous = {}
 
-    (query, server-name, database, collection, cache, callback)->
+    (query, parameters, server-name, database, collection, cache, callback)->
     
         # TODO: fix
         cache = false
@@ -57,6 +58,7 @@ execute-query = (->
             database
             collection
             query
+            parameters
             cache
         }
 
@@ -70,26 +72,22 @@ execute-query = (->
 
             ..fail ({response-text}) -> callback response-text, null
 
-)!
 
 # 
-execute-query-and-display-results = (->
+execute-query-and-display-results = do ->
 
     busy = false
 
-    (document-state)->
+    ({server-name, database, collection, parameters, query, transformation, presentation}:document-state)->
     
         return if busy
         busy := true
 
         # show preloader
         $ \.preloader .show!        
-
-        # query, transform & plot 
-        {server-name, database, collection, query, transformation, presentation} = document-state
         
         {cache} = get-hash!        
-        (err, result) <- execute-query query, server-name, database, collection, (!!cache && parse-bool cache)
+        (err, result) <- execute-query query, parameters, server-name, database, collection, (!!cache && parse-bool cache)
 
         busy := false
 
@@ -112,7 +110,6 @@ execute-query-and-display-results = (->
         [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
         return display-error "presenter error #{err}" if !!err
 
-)!
 
 #
 get-document-state = (query-id)->
@@ -125,6 +122,7 @@ get-document-state = (query-id)->
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
         presentation: presentation-editor.get-value!
+        parameters: parameters-editor.get-value!
     }
 
 # converts the hash query string to object
@@ -134,7 +132,7 @@ get-hash = ->
         |> pairs-to-obj
 
 #
-get-query-id = (->
+get-query-id = do ->
 
     result = null
 
@@ -144,7 +142,6 @@ get-query-id = (->
         [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
         result := parse-int try-get query-id, new Date!.get-time!
 
-)!
 
 #
 get-query-parameters = ->
@@ -215,7 +212,10 @@ resize = ->
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
         ..width ($ \.output .width!)
         ..height ($ \.output .height!)    
-    $ \.details .css \left, ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
+    $ \.details .css \left, 
+        ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
+    $ \.parameters .css \left, 
+        ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#info .outer-width!) / 2)
     chart.update! if !!chart
 
 # compiles & executes livescript
@@ -262,9 +262,9 @@ search-queries = (name)->
 
     local-queries = [0 to local-storage.length] 
         |> map -> local-storage.key it
-        |> filter -> !!it
+        |> filter -> !!it and !!it.name
         |> map -> JSON.parse (local-storage.get-item it)
-        |> filter -> (it.name.to-lower-case!.index-of name.to-lower-case!) != -1
+        |> filter -> (it?.name?.to-lower-case!.index-of name.to-lower-case!) != -1
 
     # filter out local-queries from remote-queries
     # we always display the local data first
@@ -285,16 +285,17 @@ toggle-remote-state-button = (document-state)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 #
-update-dom-with-document-state = ({query-name, server-name, database, collection, query, transformation, presentation})->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation})->
     document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
     $ \#database .val database
     $ \#collection .val collection
     query-editor.set-value query
+    parameters-editor.set-value parameters
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
-    [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
+    [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.session.selection.clear-selection!
 
 # on dom ready
 $ ->
@@ -338,6 +339,7 @@ $ ->
     query-editor := create-livescript-editor \query-editor
     transformation-editor := create-livescript-editor \transformation-editor
     presentation-editor := create-livescript-editor \presentation-editor
+    parameters-editor := create-livescript-editor \parameters-editor
 
     # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
     lang-tools = ace.require \ace/ext/language_tools
@@ -410,6 +412,8 @@ $ ->
     
     # info
     $ \#info .on \click, -> $ \.details .toggle!
+    $ \#params .on \click, -> $ \.parameters .toggle!
+
 
     # delete
     $ \#delete .on \click, -> 
@@ -423,12 +427,12 @@ $ ->
         
         if ($ @ .attr \data-state) == \client
             $ @ .attr \data-state, \server
-            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only true            
+            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
             update-dom-with-document-state window.remote-document-state
             
         else
             $ @ .attr \data-state, \client
-            [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
+            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
             update-dom-with-document-state JSON.parse local-storage.get-item query-id                
     
     # prevent loss of work, does not guarantee the completion of async functions    
