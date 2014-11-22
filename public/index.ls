@@ -27,7 +27,7 @@ convert-to-ace-keywords = (keywords, meta, prefix)->
 #
 convert-query-to-valid-livescript = (query)->
 
-    lines = query.split \\n
+    lines = query.split (new RegExp "\\r|\\n")
         |> filter -> 
             line = it.trim!
             !(line.length == 0 || line.0 == \#)
