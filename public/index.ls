@@ -38,7 +38,9 @@ convert-query-to-valid-livescript = (query)->
             line = (if i > 0 then "},{" else "") + line if line.0 == \$
             line
 
-    "[{#{lines.join '\n'}}]"
+    res = "[{#{lines.join '\n'}}]"
+    console.log res
+    res
 
 # makes a POST request the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
@@ -46,11 +48,13 @@ execute-query = do ->
 
     previous = {}
 
-    (query, parameters, server-name, database, collection, cache, callback)->
+    (query, parameters, server-name, database, collection, multi-query, cache, callback)->
     
         # TODO: fix
         cache = false
-        query = convert-query-to-valid-livescript query
+
+        if not multi-query
+            query = convert-query-to-valid-livescript query
 
         # compose request object
         request = {            
@@ -65,7 +69,8 @@ execute-query = do ->
         # return cached response (if any)
         return callback previous.err, previous.result if request `is-equal-to-object` previous.request
 
-        query-result-promise = $.post \/query, JSON.stringify request
+        #TODO: use same url for both multi-query and query
+        query-result-promise =  $.post (if multi-query then \/multi-query else \/query), JSON.stringify request
             ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
@@ -78,7 +83,7 @@ execute-query-and-display-results = do ->
 
     busy = false
 
-    ({server-name, database, collection, parameters, query, transformation, presentation}:document-state)->
+    ({server-name, database, collection, parameters, query, transformation, presentation, multi-query}:document-state)->
     
         return if busy
         busy := true
@@ -87,7 +92,7 @@ execute-query-and-display-results = do ->
         $ \.preloader .show!        
         
         {cache} = get-hash!        
-        (err, result) <- execute-query query, parameters, server-name, database, collection, (!!cache && parse-bool cache)
+        (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, (!!cache && parse-bool cache)
 
         busy := false
 
@@ -123,6 +128,7 @@ get-document-state = (query-id)->
         transformation: transformation-editor.get-value!
         presentation: presentation-editor.get-value!
         parameters: parameters-editor.get-value!
+        multi-query: $ \#multi-query .0.checked
     }
 
 # converts the hash query string to object
@@ -271,7 +277,7 @@ search-queries = (name)->
     queries = queries
         |> filter ({query-id})->
             local-query = local-queries |> find -> it.query-id == query-id
-            typeof local-query == \undefined || local-query is null
+            typeof local-query == \undefined or local-query is null
 
     all-queries = queries ++ local-queries
          |> sort-by -> - it.query-id        
@@ -285,12 +291,13 @@ toggle-remote-state-button = (document-state)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 #
-update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation})->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query})->
     document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
     $ \#database .val database
     $ \#collection .val collection
+    $ \#multi-query .0.checked = multi-query
     query-editor.set-value query
     parameters-editor.set-value parameters
     transformation-editor.set-value transformation

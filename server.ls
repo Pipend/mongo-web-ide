@@ -198,7 +198,7 @@ app.post \/query, (req, res)->
     res.end query-cache[key] = JSON.stringify result, null, 4
 
 
-app.get \/multi-query, (req, res) ->
+app.post \/multi-query, (req, res) ->
 
     convert-query-to-valid-livescript = (query)->
 
@@ -225,8 +225,8 @@ app.get \/multi-query, (req, res) ->
 
     get-transformation-context = -> {}
 
-    run-query = (query-id, parameters, callback) ->
-        err, {query-name, server-name, database, collection, query, transformation, presentation} <- get-query-by-id 1416646598050
+    run-query = (query-id, parameters, callback) -->
+        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id query-id
         return callback err if !!err
         query := convert-query-to-valid-livescript query
         err, result <- execute-query server-name, database, collection, query, parameters
@@ -235,21 +235,8 @@ app.get \/multi-query, (req, res) ->
         return callback err if !!err
         callback null, result
 
-
-
-    user-code = """
-parameters = 
-    country: 'IQ'
-    message-type: 'SMS'
-    from-date: to-timestamp '2014-11-19'
-    to-date: to-timestamp '2014-11-23'
-
-err, [total-sms, unique-sms] <- async.map do
-    [1416646598050, 1416658580753]
-    (id, callback) -> run-query id, parameters, callback
-
-done {total-sms, unique-sms}
-    """
+    {query} = req.body
+    user-code = query
 
     code = """
 (callback) ->
@@ -264,7 +251,7 @@ done {total-sms, unique-sms}
     err, query-res <- result!
     return die res, err.to-string! if !!err
 
-    res.type \application/json
+    # res.type \application/json
     res.end <| JSON.stringify query-res, null, 4
     
 # save the code to mongodb
