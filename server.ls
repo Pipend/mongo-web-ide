@@ -6,7 +6,7 @@ md5 = require \MD5
 moment = require \moment
 vm = require \vm 
 {compile} = require \LiveScript
-{concat-map, dasherize, filter, find, keys, map} = require \prelude-ls
+{concat-map, dasherize, filter, find, keys, map, Str} = require \prelude-ls
 {MongoClient, ObjectID, Server} = require \mongodb
 
 app = express!
@@ -88,8 +88,39 @@ get-query-by-id = (query-id, callback) !->
     return callback err, null if !!err
     callback null, if !!results and results.length > 0 then results.0 else null
 
+execute-query = (server-name, database, collection, query, parameters, callback) !->
+
+    # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
+    if \String == typeof! parameters
+        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+        return callback err, null if !!err
+
+    # compile & execute livescript code to get the parameters for aggregation
+    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
+    return callback err, null if !!err
+
+    # retrieve the connection string from config
+    connection-string = config.connection-strings |> find (.name == server-name)
+    return callback (new Error "server name not found"), null if typeof connection-string == \undefined
+
+    # connect to mongo server
+    server = new Server connection-string.host, connection-string.port
+    mongo-client = new MongoClient server, {native_parser: true}
+    err, mongo-client <- mongo-client.open 
+    return callback err, null if !!err
+
+    # perform aggregation & close db connection
+    err, result <- mongo-client.db database .collection collection .aggregate query
+    mongo-client.close!
+    return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
+
+    callback null, result
+
 # load a new document
 app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+
+app.get \/aggregator, (req, res) ->
+    res.render \public/aggregator.html, {}
 
 # load an existing document
 # returns JSON if request contains accept: application/json 
@@ -157,32 +188,71 @@ app.post \/query, (req, res)->
     key = md5 query    
     return res.end query-cache[key] if cache and !!query-cache[key]
 
-    [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
-    return die res, err if !!err
+    err, result <-  execute-query server-name, database, collection, query, parameters
 
-    # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
-    return die res, err if !!err
+    console.log err if !!err
 
-    console.log <| JSON.stringify query, null, 4
-
-    # retrieve the connection string from config
-    connection-string = config.connection-strings |> find (.name == server-name)
-    return die res, "server name not found" if typeof connection-string == \undefined
-
-    # connect to mongo server
-    server = new Server connection-string.host, connection-string.port
-    mongo-client = new MongoClient server, {native_parser: true}
-    (err, mongo-client) <- mongo-client.open 
-    return die res, err if !!err
-
-    # perform aggregation & close db connection
-    (err, result) <- mongo-client.db database .collection collection .aggregate query
-    mongo-client.close!
-    return die res, "mongodb error: #{err.to-string!}" if !!err
+    return die res, err.to-string! if !!err
 
     # cache and return the response
     res.end query-cache[key] = JSON.stringify result, null, 4
+
+
+app.post \/multi-query, (req, res) ->
+
+    convert-query-to-valid-livescript = (query)->
+
+        lines = query.split \\n
+            |> filter -> 
+                line = it.trim!
+                !(line.length == 0 || line.0 == \#)
+
+        lines = [0 til lines.length] 
+            |> map (i)-> 
+                line = lines[i]
+                line = (if i > 0 then "},{" else "") + line if line.0 == \$
+                line
+
+        "[{#{lines.join '\n'}}]"
+
+    # compiles & executes livescript
+    run-livescript = (context, livescript)-> 
+        livescript = "\nglobal <<< require 'prelude-ls' \nglobal <<< context \n" + livescript
+        try 
+            return [null, eval compile livescript, {bare: true}]
+        catch error 
+            return [error, null]
+
+    get-transformation-context = -> {}
+
+    run-query = (query-id, parameters, callback) -->
+        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id query-id
+        return callback err if !!err
+        query := convert-query-to-valid-livescript query
+        err, result <- execute-query server-name, database, collection, query, parameters
+        return callback err if !!err
+        [err, result] = run-livescript get-transformation-context!, "result = #{JSON.stringify result}\n#transformation"
+        return callback err if !!err
+        callback null, result
+
+    {query} = req.body
+    user-code = query
+
+    code = """
+(callback) ->
+    fail = (err) !-> callback err, null
+    done = (res) !-> callback null, res
+
+#{user-code |> Str.lines |> map (-> "    " + it) |> Str.unlines}
+    """
+
+    [err, result] = run-livescript get-query-context!, code
+    return die res, err.to-string! if !!err
+    err, query-res <- result!
+    return die res, err.to-string! if !!err
+
+    # res.type \application/json
+    res.end <| JSON.stringify query-res, null, 4
     
 # save the code to mongodb
 app.post \/save, (req, res)->
