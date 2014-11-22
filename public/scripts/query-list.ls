@@ -1,23 +1,21 @@
-# $ = require \../lib/jquery/dist/jquery.js
-# React = require \../lib/react/react.js
-x = require \./react-ls.ls
-console.log x!
+$ = require \../lib/jquery/dist/jquery.js
+React = require \../lib/react/react.js
+{$div} = require \./react-ls.ls
+require \../lib/prelude-browser-min/index.js
+{each, map, find, filter, is-it-NaN, sort-by, unique-by} = require \prelude-ls
 
-# require \../lib/prelude-browser-min/index.js
-# {each, map, find, filter, is-it-NaN, sort-by, unique-by} = require \prelude-ls
-
-# query-list = React.create-class do 
+query-list = React.create-class do 
     
-#     render: ->  
-#         # $div {class-name: \query-list}, \apple
+    render: ->  
+        $div {class-name: \query-list},
+            $div {class-name: \queries},
+                $div {class-name: \query},
+                    
 
-#     component-did-mount: ->
+    get-initial-state: ->    
+        {}
 
-
-#     get-initial-state: ->    
-#         {}
-
-# React.render (query-list null), document.body
+React.render (query-list {}), document.body
 
 
     #     local-queries = [0 to local-storage.length] 
