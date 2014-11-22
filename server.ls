@@ -63,6 +63,7 @@ get-default-document-state = ->
 get-query-context = ->
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
     parse-date = (s) -> new Date s
+    to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
     today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
     {
         object-id: ObjectID
@@ -70,16 +71,10 @@ get-query-context = ->
         timestamp-to-day: bucketize 86400000
         today: today!
         parse-date
+        to-timestamp
     }
 
-# load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
-
-# load an existing document
-app.get "/:queryId(\\d+)", (req, res)->
-
-    {query-id} = req.params
-
+get-query-by-id = (query-id, callback) !->
     (err, results) <- db.collection \queries .aggregate do 
         [
             {
@@ -90,9 +85,22 @@ app.get "/:queryId(\\d+)", (req, res)->
                 $sort: _id: - 1
             }
         ]
-    remote-document-state = get-default-document-state!
-    remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
+    return callback err, null if !!err
+    callback null, if !!results and results.length > 0 then results.0 else null
+
+# load a new document
+app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+
+# load an existing document
+# returns JSON if request contains accept: application/json 
+app.get "/:queryId(\\d+)", (req, res)->
+    {query-id} = req.params
+    err, remote-document-state <- get-query-by-id query-id
+    if (req.headers.accept.index-of \application/json) > -1
+        res.type \application/json
+        res.send <| JSON.stringify remote-document-state
+    else
+        res.render \public/index.html, {remote-document-state: (remote-document-state or get-default-document-state!)} 
 
 #
 app.get "/delete/:queryId", (req, res)->
@@ -155,6 +163,8 @@ app.post \/query, (req, res)->
     # compile & execute livescript code to get the parameters for aggregation
     [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
     return die res, err if !!err
+
+    console.log <| JSON.stringify query, null, 4
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
