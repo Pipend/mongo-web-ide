@@ -1,3 +1,5 @@
+{concat-map, map, unique, sort} = require \prelude-ls
+
 window.get-presentation-context = (chart, plot-chart, show-output-tag)->
 
     # all functions defined here are accessibly by the presentation code
@@ -58,9 +60,14 @@ window.get-presentation-context = (chart, plot-chart, show-output-tag)->
             
             plot-chart chart, result
             
-        plot-stacked-area: (result)->
+        plot-stacked-area: (result, {y-axis-format = (d3.format ',')})->
 
             <- nv.add-graph 
+
+            all-values = result |> concat-map (.values |> concat-map (.0)) |> unique |> sort
+            result := result |> map ({key, values}) ->
+                key: key
+                values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
 
             chart := nv.models.stacked-area-chart!
                 .x (.0)
@@ -69,7 +76,9 @@ window.get-presentation-context = (chart, plot-chart, show-output-tag)->
                 .show-controls true
                 .clip-edge true
 
-            chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            chart
+                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+                ..y-axis.tick-format y-axis-format
                 
             plot-chart chart, result
 
