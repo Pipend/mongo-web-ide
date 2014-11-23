@@ -150,12 +150,14 @@ app.get \/list, (req, res)->
             {
                 $group:
                     _id: \$queryId
+                    creation-time: $first: \$creationTime
                     query-name: $last: \$queryName
                     status: $last: \$status
             }
         ]
     return die res, err if !!err
-    res.end JSON.stringify results
+    json = results |> map ({_id, creation-time, query-name, status})-> {query-id: _id, creation-time, query-name, status}
+    res.end JSON.stringify json
     
 # load a new document
 app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
@@ -177,7 +179,7 @@ app.get "/query/:queryId(\\d+)", (req, res)->
         ]
     remote-document-state = get-default-document-state!
     remote-document-state = results.0 if err is null && !!results && results.length > 0
-    res.render \public/index.html, {remote-document-state: {} <<< remote-document-state} 
+    res.render \public/ide.html, {remote-document-state: {} <<< remote-document-state} 
 
 # save the code to mongodb
 app.post \/save, (req, res)->

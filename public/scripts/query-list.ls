@@ -1,38 +1,41 @@
 $ = require \../lib/jquery/dist/jquery.js
 React = require \../lib/react/react.js
-{$div} = require \./react-ls.ls
+{$a, $div, $input} = require \./react-ls.ls
 require \../lib/prelude-browser-min/index.js
 {each, map, find, filter, is-it-NaN, sort-by, unique-by} = require \prelude-ls
+{search-queries-by-name} = require \./queries.ls
+moment = require \../lib/moment/moment.js
 
-query-list = React.create-class do 
+query-list = React.create-class do
     
-    render: ->  
+    render: ->
         $div {class-name: \query-list},
-            $div {class-name: \queries},
-                $div {class-name: \query},
-                    
 
-    get-initial-state: ->    
-        {}
+            # Search
+            $div {class-name: \search, on-input: @on-search-string-change},
+                $div {class-name: \grid},
+                    $input {type:\search, placeholder: \Search...}
+                    $div {class-name: \button}, \Search
+
+            # Queries
+            $div {class-name: \queries},
+                @.state.queries |> map ->
+                    $div {class-name: \query},
+                        $div {class-name: \avatar}
+                        $a {class-name: \query-name, href: "/query/#{it.query-id}"}, it.query-name
+                        $div {class-name: \tags}
+                        $div {class-name: \right},
+                            $div {class-name: \creation-date}, moment(it?.creation-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
+                            $div {class-name: 'control fork'}
+                    
+    on-search-string-change: (e)->
+        self = @
+        (err, queries) <- search-queries-by-name (e?.target?.value or "")
+        self.set-state {queries}
+
+    component-did-mount: -> @on-search-string-change!
+
+    get-initial-state: ->
+        {queries: []}
 
 React.render (query-list {}), document.body
-
-
-    #     local-queries = [0 to local-storage.length] 
-    #         |> map -> local-storage.key it
-    #         |> map -> 
-    #             data = local-storage.get-item it
-    #             {query-name}? = JSON.parse data
-    #             {query-id: (parse-int it), query-name}
-    #         |> filter ({query-id})->
-    #             server-version = queries |> find -> it.query-id == query-id
-    #             (typeof server-version == \undefined) || server-version.status
-
-    #     (queries |> filter (.status == true)) ++ local-queries 
-    #         |> unique-by (.query-id)
-    #         |> filter -> !!it.query-id  && !is-it-NaN it.query-id
-    #         |> sort-by (.query-id)
-    #         |> each ->
-    #             link-tag = $ "<a/>" .attr \href, "/#{it.query-id}" .html "#{it.query-name} (#{it.query-id})"
-    #             list-element = $ "<li/>" .append link-tag
-    #             $ \ol .append list-element

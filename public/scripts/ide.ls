@@ -294,7 +294,7 @@ $ ->
         $ window .unbind \mousemove .bind \mousemove, (e2)->            
             $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
             resize-editors!
-            resize-output!
+            resize!
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
@@ -306,7 +306,7 @@ $ ->
         $ window .unbind \mousemove .bind \mousemove, (e2)-> 
             $editor.height (initial-height + (e2.page-y - e1.page-y))
             resize-editors!
-            resize-output!
+            resize!
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
