@@ -6,7 +6,7 @@ chart = null
 presentation-editor = null 
 query-editor = null
 transformation-editor = null
-page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/(\\d+)(\\#\\?.*)?"
+page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/query\\/(\\d+)(\\#\\?.*)?"
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -42,7 +42,7 @@ convert-query-to-valid-livescript = (query)->
 
 # makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
-execute-query = (->
+execute-query = do ->
 
     previous = {}
 
@@ -71,10 +71,8 @@ execute-query = (->
 
             ..fail ({response-text}) -> callback response-text, null
 
-)!
-
 # uses the execute-query function and presents the results after apply the transformation
-execute-query-and-display-results = (->
+execute-query-and-display-results = do ->
 
     busy = false
 
@@ -112,8 +110,6 @@ execute-query-and-display-results = (->
 
         [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
         return display-error "presenter error #{err}" if !!err
-
-)!
 
 # gets the documetn state from the dom elements
 get-document-state = (query-id)->
@@ -339,7 +335,7 @@ $ ->
     # load document & update DOM, editors
     query-id = get-query-id!
     document-state = load-document-state query-id
-    history.replace-state document-state, document-state.name, "/#{query-id}#{get-query-parameters!}"
+    history.replace-state document-state, document-state.name, "/query/#{query-id}#{get-query-parameters!}"
     update-dom-with-document-state document-state
 
     # update document title with query-name

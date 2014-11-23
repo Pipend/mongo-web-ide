@@ -3,7 +3,7 @@
 
     <head>
         <title><%= typeof(remoteDocumentState.queryName) == "undefined" ? "Mongo Web IDE" : remoteDocumentState.queryName %></title>
-        <link rel="stylesheet" href="/public/index.css">
+        <link rel="stylesheet" href="/public/styles/ide.css">
         <link rel="stylesheet" href="/public/lib/nvd3/nv.d3.css">
         <script type="text/javascript">
             var remoteDocumentState = <%- JSON.stringify(remoteDocumentState) %>;
@@ -17,12 +17,12 @@
         <script src="/public/lib/d3/d3.js" type="text/javascript"></script>
         <script src="/public/lib/nvd3/nv.d3.js" type="text/javascript"></script>
         <script src="/public/lib/prelude-browser-min/index.js" type="text/javascript"></script>
-        <script src="/public/transformation-context.js" type="text/javascript"></script>
-        <script src="/public/presentation-context.js" type="text/javascript"></script>
+        <script src="/public/scripts/transformation-context.js" type="text/javascript"></script>
+        <script src="/public/scripts/presentation-context.js" type="text/javascript"></script>
         <script src="/public/lib/react/react.js" type="text/javascript"></script>
         <script src="/public/utils.js" type="text/javascript"></script>
-        <script src="/public/query-search.js" type="text/javascript"></script>
-        <script src="/public/index.js" type="text/javascript"></script>
+        <script src="/public/scripts/query-search.js" type="text/javascript"></script>
+        <script src="/public/scripts/ide.js" type="text/javascript"></script>
     </head>
 
     <body>        

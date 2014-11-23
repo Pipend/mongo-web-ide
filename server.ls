@@ -58,7 +58,7 @@ get-all-keys-recursively = (object, filter-function)->
         [key]
 
 get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"}
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
 
 get-query-context = ->
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
@@ -160,7 +160,7 @@ app.get \/list, (req, res)->
     res.end JSON.stringify json
     
 # load a new document
-app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!} 
 
 # load an existing document
 app.get "/query/:queryId(\\d+)", (req, res)->
