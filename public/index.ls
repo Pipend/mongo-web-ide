@@ -424,6 +424,7 @@ $ ->
 
     # delete
     $ \#delete .on \click, -> 
+        return if !confirm "Are you sure you want to delete this query?"
         <- $.get "/delete/#{query-id}"
         local-storage.remove-item "#{query-id}"
         window.onbeforeunload = $.noop!
