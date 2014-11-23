@@ -50,7 +50,7 @@ window.query-search = React.create-class do
                 |> map -> local-storage.key it
                 |> filter -> !!it
                 |> map -> JSON.parse (local-storage.get-item it)
-                |> filter -> (it.query-name.to-lower-case!.index-of name.to-lower-case!) != -1
+                |> filter -> (it?.query-name?.to-lower-case!.index-of name.to-lower-case!) != -1
 
             queries = queries
                 |> filter ({query-id})->

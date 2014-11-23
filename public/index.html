@@ -38,25 +38,33 @@
             <a class="button" id="execute-query">Execute</a>
             <a class="button" id="fork">Fork</a>            
             <a class="button" id="info">Info</a>
+            <a class="button" id="params">Params</a>
             <a class="button" id="delete">Delete</a>
             <a class="button" id="remote-state" data-state="client">
                 <span class="client">Client</span>
                 <span class="server">Server</span>
             </a>            
+            <span class="button">
+                <input type="checkbox" name="multi-query" id="multi-query">
+                <label for="multi-query">Multi</label>
+            </span>
         </div>
         <div class="details" style="display: none">
             <div>
                 <label>Server name</label>
-                <input type="text" id="server-name"/>
+                <input type="text" id="server-name" name="server-name"/>
             </div>
             <div>
                 <label>Database</label>
-                <input type="text" id="database"/>
+                <input type="text" id="database" name="database"/>
             </div>
             <div>
                 <label>Collection</label>
-                <input type="text" id="collection"/>
+                <input type="text" id="collection" name="collection"/>
             </div>
+        </div>
+        <div class="parameters" style="display: none">
+            <div class="editor" id="parameters-editor"></div>
         </div>
         <div class="content">
             <div class="editors">
