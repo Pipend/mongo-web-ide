@@ -1,12 +1,19 @@
 {each, map, find, filter, is-it-NaN, sort-by, unique-by} = require \prelude-ls
 
+try-parse = ->
+	try
+		JSON.parse it
+	catch error
+		null
+	  
 
 $ ->
 	local-queries = [0 to local-storage.length] 
 		|> map -> local-storage.key it
+		|> filter (not) . is-it-NaN
 		|> map -> 
 			data = local-storage.get-item it
-			{query-name}? = JSON.parse data
+			{query-name}? = try-parse data
 			{query-id: (parse-int it), query-name}
 		|> filter ({query-id})->
 			server-version = queries |> find -> it.query-id == query-id
