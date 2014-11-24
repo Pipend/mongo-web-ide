@@ -2,15 +2,21 @@ $ = require \../lib/jquery/dist/jquery.js
 React = require \../lib/react/react.js
 {$a, $div, $input} = require \./react-ls.ls
 require \../lib/prelude-browser-min/index.js
-{each, map, find, filter, is-it-NaN, sort-by, unique-by} = require \prelude-ls
+{find, map, sort-by, Str} = require \prelude-ls
 {search-queries-by-name} = require \./queries.ls
 moment = require \../lib/moment/moment.js
 
 query-list = React.create-class do
-    
+
     render: ->
+        
         $div {class-name: \query-list},
 
+            # Menu
+            $div {class-name: \menu},
+                $a {class-name: \logo}
+                $a {class-name: \button, href: \/query, target: \_blank}, \New
+                
             # Search
             $div {class-name: \search, on-input: @on-search-string-change},
                 $div {class-name: \grid},
@@ -19,19 +25,20 @@ query-list = React.create-class do
 
             # Queries
             $div {class-name: \queries},
-                @.state.queries |> map ->
+                @.state.queries |> map ({query-id, query-name, creation-time, modification-time, storage})->
                     $div {class-name: \query},
                         $div {class-name: \avatar}
-                        $a {class-name: \query-name, href: "/query/#{it.query-id}"}, it.query-name
+                        $a {class-name: \query-name, href: "/query/#{query-id}"}, query-name
+                        $div {class-name: \storage}, (storage |> Str.join " & ")
                         $div {class-name: \tags}
-                        $div {class-name: \right},
-                            $div {class-name: \creation-date}, moment(it?.creation-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
+                        $div {class-name: \right},                            
+                            $div {class-name: \date}, moment(modification-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
                             $div {class-name: 'control fork'}
-                    
+                            
     on-search-string-change: (e)->
         self = @
         (err, queries) <- search-queries-by-name (e?.target?.value or "")
-        self.set-state {queries}
+        self.set-state {queries: queries |> sort-by -> -it?.modification-time or 0}
 
     component-did-mount: -> @on-search-string-change!
 

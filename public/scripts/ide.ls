@@ -64,7 +64,7 @@ execute-query = do ->
         # return cached response (if any)
         return callback previous.err, previous.result if request `is-equal-to-object` previous.request
 
-        query-result-promise = $.post \/query, JSON.stringify request
+        query-result-promise = $.post \/execute, JSON.stringify request
             ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
@@ -388,6 +388,7 @@ $ ->
 
     # delete
     $ \#delete .on \click, -> 
+        return if !confirm "Are you sure you want to delete this query?"
         <- $.get "/delete/#{query-id}"
         local-storage.remove-item "#{query-id}"
         window.onbeforeunload = $.noop!

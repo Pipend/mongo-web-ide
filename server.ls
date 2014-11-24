@@ -1,35 +1,22 @@
-async = require \async 
-config = require \./config 
+async = require \async
+config = require \./config
 express = require \express
+session = require \express-session
 fs = require \fs
 md5 = require \MD5
 moment = require \moment
-vm = require \vm 
 {compile} = require \LiveScript
-{concat-map, dasherize, filter, find, keys, map} = require \prelude-ls
 {MongoClient, ObjectID, Server} = require \mongodb
+passport = require \passport
+github-strategy = (require \passport-github).Strategy
+{concat-map, dasherize, filter, find, keys, map} = require \prelude-ls
+request = require \request
+vm = require \vm
 
-app = express!
-    ..set \views, __dirname + \/
-    ..engine \.html, (require \ejs).__express
-    ..set 'view engine', \ejs    
-    ..use (require \cors)!
-    ..use (require \cookie-parser)!
-    ..use "/public" express.static "#__dirname/public"
-    ..use (req, res, next)->
-        return next! if req.method is not \POST
-        body = ""
-        req.on \data, -> body += it 
-        req.on \end, -> 
-            req <<< {body: JSON.parse body}
-            next!
-
+# global variables
 query-cache = {}
 
-(err, db) <- MongoClient.connect config.mongo, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.mongo}"
-
+# utility functions
 compile-and-execute-livescript = (livescript-code, context)->
 
     die = (err)->
@@ -72,8 +59,78 @@ get-query-context = ->
         parse-date
     }
 
+# connect to mongo-db
+(err, db) <- MongoClient.connect config.mongo, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.mongo}"
+
+# create & setup express app
+app = express!
+    ..set \views, __dirname + \/
+    ..engine \.html, (require \ejs).__express
+    ..set 'view engine', \ejs    
+    ..use (require \cors)!
+    ..use (require \cookie-parser)!
+    ..use (require \body-parser)!
+    ..use (require \method-override)!
+    ..use (session {secret: 'keyword cat'})
+    ..use passport.initialize!
+    ..use passport.session!
+    ..use "/public" express.static "#__dirname/public"    
+
+# github passport strategy
+passport.use new github-strategy do 
+    {
+        clientID: config.github.client-id,
+        client-secret: config.github.client-secret,
+        callbackURL: "http://127.0.0.1:3000/auth/github/callback"
+    }
+    (accessToken, refreshToken, profile, done) ->
+
+        die = (err)->
+            console.log "github authentication error: #{err}"
+            return done err, null 
+
+        organizations-url = profile?._json?.organizations_url
+        return die "organizations url not found" if !organizations-url
+
+        (error, response, body) <- request do 
+            headers:
+                'User-Agent': "Mongo Web IDE"
+            url: organizations-url
+        return die error if !!err
+
+        organization-member = (JSON.parse body) |> find (.login == config.organization-name)
+        return die "not part of #{config.organization-name}" if !organization-member
+
+        done null, profile
+
+# convert github data to user-id
+passport.serialize-user (user, done)-> done null, user
+
+# convert user-id to github data
+passport.deserialize-user (obj, done)-> done null, obj
+
+# redirect user to github
+app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+
+# user is redirected to this route by github
+app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
+
+# login with github page
+app.get \/login, (req, res)-> res.render \public/login.html
+
+# invokes req.logout!
+app.get \/logout, (req, res)-> 
+    req.logout!
+    res.redirect \/
+
+app.use (req, res, next)->
+    return next! if req.is-authenticated!
+    res.redirect \login
+
 # display a list of all queries
-app.get \/, (req, res)-> res.render \public/query-list.html, {}
+app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 
 # set the status property of the query to false
 app.get "/delete/:queryId", (req, res)->
@@ -99,6 +156,7 @@ app.post \/execute, (req, res)->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
+    console.log server-name, config.connection-strings
     return die res, "server name not found" if typeof connection-string == \undefined
 
     # connect to mongo server
@@ -151,14 +209,23 @@ app.get \/list, (req, res)->
                 $group:
                     _id: \$queryId
                     creation-time: $first: \$creationTime
+                    modification-time: $last: \$creationTime
                     query-name: $last: \$queryName
                     status: $last: \$status
             }
+            {
+                $project: 
+                    _id: 0
+                    query-id: "$_id"
+                    query-name: 1
+                    creation-time: 1
+                    modification-time: 1
+                    status: 1
+            }
         ]
     return die res, err if !!err
-    json = results |> map ({_id, creation-time, query-name, status})-> {query-id: _id, creation-time, query-name, status}
-    res.end JSON.stringify json
-    
+    res.end JSON.stringify results
+
 # load a new document
 app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!} 
 
