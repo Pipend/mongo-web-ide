@@ -13,6 +13,7 @@
     "MD5": "^1.2.1",
     "async": "^0.9.0",
     "body-parser": "^1.9.3",
+    "browserify": "^6.3.3",
     "cookie-parser": "^1.3.3",
     "cors": "^2.5.2",
     "ejs": "^1.0.0",
@@ -24,6 +25,7 @@
     "gulp-livescript": "^2.2.0",
     "gulp-nodemon": "^1.0.4",
     "gulp-stylus": "^1.3.4",
+    "gulp-watchify": "^0.2.0",
     "jade": "^1.7.0",
     "liveify": "^1.3.1",
     "method-override": "^2.3.0",
@@ -32,7 +34,9 @@
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
     "prelude-ls": "^1.1.1",
-    "request": "^2.48.0"
+    "request": "^2.48.0",
+    "vinyl-source-stream": "^1.0.0",
+    "watchify": "^0.6.4"
   },
   "devDependencies": {
     "gulp": "^3.8.10"

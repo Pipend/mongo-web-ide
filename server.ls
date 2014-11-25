@@ -71,11 +71,31 @@ app = express!
     ..set 'view engine', \ejs    
     ..use (require \cors)!
     ..use (require \cookie-parser)!
-    ..use (require \body-parser)!
+    ..use (req, res, next)->
+        return next! if req.method is not \POST
+        body = ""
+        req.on \data, -> body += it 
+        req.on \end, -> 
+            req <<< {body: JSON.parse body}
+            next!
     ..use (require \method-override)!
     ..use (session {secret: 'keyword cat'})
     ..use passport.initialize!
     ..use passport.session!
+    ..use (req, res, next)->
+
+        # get the user object from query string & store it in the session
+        user-id = req?.query?.user-id
+        req._passport.session.user = {id: user-id, username: \guest} if !!user-id
+
+        # get the user object from the session & store it in the request
+        # the req.is-authenticated() method checkes the request object
+        if !!req._passport.session.user
+            property = req?._passport?.instance?._userProperty or \user
+            req[property] = req._passport.session.user
+
+        next!
+
     ..use "/public" express.static "#__dirname/public"    
 
 # github passport strategy
@@ -125,9 +145,10 @@ app.get \/logout, (req, res)->
     req.logout!
     res.redirect \/
 
+# ROUTES FROM THIS POINT ON REQUIRE AUTHENTICATION
 app.use (req, res, next)->
     return next! if req.is-authenticated!
-    res.redirect \login
+    res.redirect \/login
 
 # display a list of all queries
 app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
@@ -136,13 +157,12 @@ app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 app.get "/delete/:queryId", (req, res)->
     (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
     return die res, err if !!err    
-
-    console.log \updated, updated
-
     res.end!
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
+
+    console.log req.body
 
     {cache, server-name, database, collection, query} = req.body    
 
@@ -156,7 +176,6 @@ app.post \/execute, (req, res)->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
-    console.log server-name, config.connection-strings
     return die res, "server name not found" if typeof connection-string == \undefined
 
     # connect to mongo server

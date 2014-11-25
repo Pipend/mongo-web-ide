@@ -1,9 +1,24 @@
-{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
+ace = require \brace
+require \brace/theme/monokai 
+require \brace/mode/livescript
+require \brace/ext/language_tools   
+window.d3 = require \d3-browserify
+$ = require \jquery-browserify
+require \keymaster 
+require \LiveScript  
 {compile} = require \LiveScript
+require \nvd3 
+require \prelude-ls  
+{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
+{get-presentation-context} = require \./presentation-context.ls
+{query-search} = require \./query-search.ls  
+React = require \react
+{get-transformation-context} = require \./transformation-context.ls
+_ = require \underscore
 
 # global variables  
 chart = null
-presentation-editor = null 
+presentation-editor = null
 query-editor = null
 transformation-editor = null
 page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/query\\/(\\d+)(\\#\\?.*)?"
@@ -76,7 +91,7 @@ execute-query-and-display-results = do ->
 
     busy = false
 
-    (document-state)->
+    ({server-name, database, collection, query, transformation, presentation}:document-state)->
     
         return if busy
         busy := true
@@ -85,8 +100,6 @@ execute-query-and-display-results = do ->
         $ \.preloader .show!        
 
         # query, transform & plot 
-        {server-name, database, collection, query, transformation, presentation} = document-state
-        
         {cache} = get-hash!        
         (err, result) <- execute-query query, server-name, database, collection, (!!cache && parse-bool cache)
 
@@ -177,7 +190,7 @@ is-equal-to-object = (o1, o2)->
     (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
 
 # by default the keymaster plugin filters input elements
-key.filter = -> true
+# key.filter = -> true
 
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->

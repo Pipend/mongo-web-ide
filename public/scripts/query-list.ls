@@ -1,10 +1,10 @@
-$ = require \../lib/jquery/dist/jquery.js
-React = require \../lib/react/react.js
+$ = require \jquery-browserify
+React = require \react
 {$a, $div, $input} = require \./react-ls.ls
-require \../lib/prelude-browser-min/index.js
+require \prelude-ls
 {find, map, sort-by, Str} = require \prelude-ls
 {search-queries-by-name} = require \./queries.ls
-moment = require \../lib/moment/moment.js
+moment = require \moment
 
 query-list = React.create-class do
 
@@ -16,6 +16,7 @@ query-list = React.create-class do
             $div {class-name: \menu},
                 $a {class-name: \logo}
                 $a {class-name: \button, href: \/query, target: \_blank}, \New
+                $a {class-name: \link, href:\/logout}, \Logout
                 
             # Search
             $div {class-name: \search, on-input: @on-search-string-change},
@@ -23,7 +24,7 @@ query-list = React.create-class do
                     $input {type:\search, placeholder: \Search...}
                     $div {class-name: \button}, \Search
 
-            # Queries
+            # Queries 
             $div {class-name: \queries},
                 @.state.queries |> map ({query-id, query-name, creation-time, modification-time, storage})->
                     $div {class-name: \query},
