@@ -96,7 +96,8 @@ app = express!
 
         next!
 
-    ..use "/public" express.static "#__dirname/public"    
+    ..use "/public" express.static "#__dirname/public"
+    ..use "/node_modules" express.static "#__dirname/node_modules"
 
 # github passport strategy
 passport.use new github-strategy do 
@@ -161,8 +162,6 @@ app.get "/delete/:queryId", (req, res)->
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
-
-    console.log req.body
 
     {cache, server-name, database, collection, query} = req.body    
 

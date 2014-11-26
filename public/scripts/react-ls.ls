@@ -1,4 +1,4 @@
-React = require \../lib/react/react.js
+React = require \react
 
 create-element = (element, args)-> React.create-element.apply @, [element] ++ Array.prototype.slice.call args
 

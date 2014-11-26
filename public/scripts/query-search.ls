@@ -1,5 +1,5 @@
 {filter, find, fold, map, sort-by} = require \prelude-ls
-$ = require \../lib/jquery/dist/jquery.js
+$ = require \jquery-browserify
 React = require \react
 
 module.exports.query-search = React.create-class do

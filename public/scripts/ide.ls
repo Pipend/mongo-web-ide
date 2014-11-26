@@ -1,22 +1,40 @@
 ace = require \brace
-require \brace/theme/monokai 
+
+# modifies the ace editor config, 
+# usage: ..set-theme \ace/theme/monokai
+# usage: ..set-mode \ace/mode/livescript
+require \brace/theme/monokai
 require \brace/mode/livescript
-require \brace/ext/language_tools   
+
+# modifies the ace editor config
+# usage: ..set-options {enable-basic-autocompletion: true}
+# allows adding custom auto completers
+ace-language-tools = require \brace/ext/language_tools 
+
+# nvd3 requires d3 to be in global space
 window.d3 = require \d3-browserify
-$ = require \jquery-browserify
-require \keymaster 
-require \LiveScript  
-{compile} = require \LiveScript
 require \nvd3 
-require \prelude-ls  
+
+# the first require is used by browserify to import the LiveScript module
+# the second require is defined in the LiveScript module and exports the object
+require \LiveScript
+{compile} = require \LiveScript
+
+# the first require is used by browserify to import the prelude-ls module
+# the second require is defined in the prelude-ls module and exports the object
+require \prelude-ls
 {dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
+
+# normal dependencies
+$ = require \jquery-browserify
+{key, key-filter} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
-{query-search} = require \./query-search.ls  
+{query-search} = require \./query-search.ls
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
 
-# global variables  
+# module-global variables  
 chart = null
 presentation-editor = null
 query-editor = null
@@ -190,7 +208,7 @@ is-equal-to-object = (o1, o2)->
     (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
 
 # by default the keymaster plugin filters input elements
-# key.filter = -> true
+key-filter = -> true
 
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->
@@ -263,12 +281,6 @@ show-output-tag = (tag)->
     $ \.output .children! .each -> 
         $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
 
-# the state button is only visible when there is copy of the query on the server
-# the highlight on the state button indicates the client version differs the server version
-toggle-remote-state-button = (document-state)->
-    $ \#remote-state .toggle !!window.remote-document-state.query-id
-    $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
-
 # a convenience function
 try-get = (value, default-value)-> if !!value then value else default-value
 
@@ -283,6 +295,12 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor] |> map -> it.session.selection.clear-selection!
+
+# the state button is only visible when there is copy of the query on the server
+# the highlight on the state button indicates the client version differs the server version
+update-remote-state-button = (document-state)->
+    $ \#remote-state .toggle !!window.remote-document-state.query-id
+    $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
 
 # on dom ready
 $ ->
@@ -328,7 +346,7 @@ $ ->
     presentation-editor := create-livescript-editor \presentation-editor
 
     # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
-    lang-tools = ace.require \ace/ext/language_tools
+    ace-language-tools
         ..add-completer {
             get-completions: (, , , prefix, callback)->
 
@@ -343,7 +361,7 @@ $ ->
 
     # auto complete for mongo collection properties
     $.get "/keywords/queryContext", (collection-keywords)-> 
-        lang-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
+        ace-language-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
         
     # load document & update DOM, editors
     query-id = get-query-id!
@@ -362,7 +380,7 @@ $ ->
 
         document-state = get-document-state query-id
         save-to-local-storage document-state
-        toggle-remote-state-button document-state
+        update-remote-state-button document-state
 
     document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
     on-key-down!
@@ -376,7 +394,7 @@ $ ->
         [,save-function] = get-save-function document-state
 
         # update the difference indicator between client & server code
-        save-function -> toggle-remote-state-button document-state
+        save-function -> update-remote-state-button document-state
 
         # prevent default behavious of displaying the save-dialog
         cancel-event e
@@ -420,6 +438,11 @@ $ ->
             [query-editor, transformation-editor, presentation-editor] |> map -> it.set-read-only false
             update-dom-with-document-state JSON.parse local-storage.get-item query-id                
     
+    $ \#reset-to-server .on \click, ->
+        return if !confirm "Are you sure you want to reset query to match server version?"
+        update-dom-with-document-state window.remote-document-state
+        update-remote-state-button get-document-state!
+
     # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = -> 
         save-to-local-storage get-document-state query-id

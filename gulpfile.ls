@@ -1,45 +1,58 @@
 async = require \async
 browserify = require \browserify
+cheerio = require \cheerio
 fs = require \fs
 gulp = require \gulp
 gulp-browserify = require \gulp-browserify 
 gulp-livescript = require \gulp-livescript
 nodemon = require \gulp-nodemon
-source = require \vinyl-source-stream
 stylus = require \gulp-stylus
+{basename, dirname, extname} = require \path
+{filter, flatten, each, map, Str} = require \prelude-ls
+source = require \vinyl-source-stream
 watchify = require \watchify
-{filter, each, map} = require \prelude-ls
 
-create-bundlers = do ->
+get-html-files = (directory, callback)->
+    (err, files) <- fs.readdir directory
+    return callback err, null if !!err
+    callback null, (files 
+        |> filter -> (extname it) == \.html
+        |> map -> "#{directory}/#{it}"
+    )
 
-    cache = {}
+get-scripts-to-browserify = (html-files, callback)->
+    (err, results) <- async.map do 
+        html-files
+        (file, callback)->
+            (err, data) <- fs.read-file file
+            return callback err, null if !!err
+            $ = cheerio.load "#{data}"
+            callback null, ($ "script[src]" 
+                |> map -> $ it .attr \src
+                |> filter -> !!it and it.trim!.length > 0
+            )
+    return callback err, null if !!err
+    callback null, (results |> flatten |> filter -> !!it)
 
-    (directory, callback)->
-
-        return cache[directory] if !!cache[directory]
-
-        (err, files) <- fs.readdir directory
-        return callback err, null if !!err
-
-        (err, results) <- async.map do 
-            files |> filter -> (it.index-of \.ls) != -1
-            (file, callback)->
-                w = watchify {entries: ["#{directory}/#{file}"]}
-                w.transform \liveify    
-                bundle = ->
-                    w.bundle {debug: true}
-                        .on \error, -> console.log arguments
-                        .pipe source (file.replace \.ls, \.js)
-                        .pipe gulp.dest directory
-                w.on \update, bundle
-                callback null, {
-                    file
-                    bundle
-                }
-
-        return callback err, null if !!err
-        cache[directory] = results
-        callback null, results
+watch-entries = (entries, callback)->
+    (err) <- async.each-series do 
+        entries
+        ({directory, file}, callback)->
+            b = browserify watchify.args <<< {debug: true}
+            b.add "#{directory}/#{file}.ls"
+            b.transform \liveify    
+            b.transform \cssify
+            w = watchify b
+            bundle = ->
+                w.bundle!
+                    .on \error, -> console.log arguments
+                    .pipe source "#{file}.js"
+                    .pipe gulp.dest directory
+            w.on \update, bundle
+            bundle!
+            callback null
+    return callback err if !!err
+    callback null
 
 gulp.task \compilation, ->
     gulp.src 'public/styles/*.styl'
@@ -47,11 +60,22 @@ gulp.task \compilation, ->
     .pipe gulp.dest 'public/styles/'    
 
 gulp.task \watch, ->
+
     gulp.watch <[public/styles/*.styl]>, ['compilation']
-    
-    (err, bundlers) <- create-bundlers \./public/scripts
+
+    (err, html-files) <- get-html-files \./public/
     return console.log err if !!err
-    bundlers |> each ({bundle})-> bundle!
+
+    (err, scripts) <- get-scripts-to-browserify html-files
+    return console.log err if !!err
+
+    entries = scripts |> map -> {
+        directory: ".#{dirname it}"
+        file: (basename it).replace (extname it), ""
+    }
+
+    (err) <- watch-entries entries
+    return console.log err if !!err
     
 gulp.task \develop, ->
     nodemon {        
