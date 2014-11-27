@@ -27,7 +27,7 @@ require \prelude-ls
 
 # normal dependencies
 $ = require \jquery-browserify
-{key, key-filter} = require \keymaster
+{key} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
 {query-search} = require \./query-search.ls
 React = require \react
@@ -206,9 +206,6 @@ get-save-function = (document-state)->
 is-equal-to-object = (o1, o2)->
     return false if (typeof o1 == \undefined || o1 == null) || (typeof o2 == \undefined || o2 == null)
     (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
-
-# by default the keymaster plugin filters input elements
-key-filter = -> true
 
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->
