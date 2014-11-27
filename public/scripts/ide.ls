@@ -23,7 +23,7 @@ require \LiveScript
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by} = require \prelude-ls
+{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
 
 # normal dependencies
 $ = require \jquery-browserify
@@ -159,6 +159,13 @@ get-document-state = (query-id)->
         presentation: presentation-editor.get-value!
         parameters: parameters-editor.get-value!
         multi-query: $ \#multi-query .0.checked
+        ui: 
+            left-editors-width: $ \.editors .width!
+            editors:
+                $ \.editor .map -> 
+                    self = $ this
+                    id: (self.attr \id), height: self.height!
+                .to-array!
     }
 
 # converts the hash query string to object
@@ -208,8 +215,16 @@ get-save-function = (document-state)->
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
+    return o1 == o2 if <[Boolan Number String]> |> any -> is-type it, o1
     return false if (typeof o1 == \undefined || o1 == null) || (typeof o2 == \undefined || o2 == null)
-    (keys o1) |> fold ((memo, key)-> memo && (o2[key] == o1[key])), true
+    (keys o1) |> all (key) ->
+        if is-type \Object o1[key]
+            o1[key] `is-equal-to-object` o2[key]
+        else if is-type \Array o1[key]
+            return false if o1.length != o2.length
+            [1 to o1.length] |> -> all o1[it] `is-equal-to-object` o2[it]
+        else
+            o1[key] == o2[key]
 
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->
@@ -289,7 +304,7 @@ show-output-tag = (tag)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 # update the editors, document.title etc using the document-state (persisted to local-storage and server)
-update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query})->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, ui})->
     document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
@@ -301,6 +316,11 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.session.selection.clear-selection!
+    if !!ui
+        if !!ui.editors
+            ui.editors |> each ({id, height}) -> $ '#' + id .css \height, height
+        if !!ui.left-editors-width
+            $ \.editors .css \width, ui.left-editors-width
 
 # the state button is only visible when there is copy of the query on the server
 # the highlight on the state button indicates the client version differs the server version
@@ -422,11 +442,10 @@ $ ->
         forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
         window.open "/#{new-query-id}", \_blank
-    
+
     # info
     $ \#info .on \click, -> $ \.details .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
-
 
     # delete
     $ \#delete .on \click, -> 
@@ -448,7 +467,7 @@ $ ->
             $ @ .attr \data-state, \client
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
             update-dom-with-document-state JSON.parse local-storage.get-item query-id                
-    
+
     $ \#reset-to-server .on \click, ->
         return if !confirm "Are you sure you want to reset query to match server version?"
         update-dom-with-document-state window.remote-document-state
@@ -472,7 +491,6 @@ $ ->
         cancel-event e
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
-
 
 
 
