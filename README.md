@@ -8,9 +8,6 @@
 * install the required node modules :
 ``` sudo npm install ```
 
-* install the client-side javascript libraries :
-``` sudo bower install ```
-
 * create ``` ./config.ls ``` with the following contents :
 ```
 config =

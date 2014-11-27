@@ -1,0 +1,69 @@
+.menu 
+  background: linear-gradient(#111, #222)
+  border-bottom: 1px solid rgba(255,255,255,0.2)   
+  box-sizing: border-box
+  display: block
+  font-size: 0px
+  height: 64px  
+
+  a
+    box-sizing: border-box
+    color: white
+    cursor: pointer
+    display: inline-block      
+    text-align: center
+    text-decoration: none
+    user-select: none
+    -webkit-user-select: none
+    vertical-align: top
+
+    &[data-state=client] 
+      span 
+        &.client
+          display: inline-block
+        &.server 
+          display: none
+
+    &[data-state=server] 
+      span 
+        &.client
+          display: none
+        &.server 
+          display: inline-block
+
+    &:active 
+      -webkit-transform: translateY(1px)
+
+    &.button
+      background: linear-gradient(#4d4d4d, #2f2f2f)        
+      border-radius: 8px
+      border: 1px solid black
+      font-size: 16px
+      line-height: 56px
+      margin-right: 4px
+      position: relative
+      top: 5px
+      width: 90px    
+      height: 54px
+    
+    &.highlight
+      border-top: 2px solid orange
+
+    &.link
+      border-left: 1px solid rgba(255,255,255,0.2)
+      color: white
+      font-size: 14px
+      float: right
+      height: 63px
+      line-height: 63px
+      min-width: 100px
+
+    &.logo
+      background-image: url(/public/images/mongodb-logo.png)
+      background-position: 20px center
+      background-repeat: no-repeat
+      background-size: 70%                
+      font-size: 28px
+      line-height: 64px
+      width: 180px
+      height: 64px

@@ -1,6 +1,8 @@
 {filter, find, fold, map, sort-by} = require \prelude-ls
+$ = require \jquery-browserify
+React = require \react
 
-window.query-search = React.create-class do
+module.exports.query-search = React.create-class do
 
     render: ->
         queries = @?.state?.queries or []

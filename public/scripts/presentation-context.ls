@@ -1,4 +1,4 @@
-window.get-presentation-context = (chart, plot-chart, show-output-tag)->
+module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
 
     # all functions defined here are accessibly by the presentation code
     {
