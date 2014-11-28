@@ -10,3 +10,13 @@
 * query parameters 
 * execution of multiple queries
 * prompt user before deleting query
+
+# 1.5
+
+* new build system using browserify
+* new query search interface
+* login with github & guest account
+* query parameters
+* ability to execute multiple queries
+* ability to reset client version to match server
+* persist ui changes (dimensions of the editors) per query

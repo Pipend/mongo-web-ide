@@ -1,0 +1,153 @@
+body
+  background: #252527
+  margin: 0px
+  padding: 0px
+  font-family: Helvetica
+
+.search
+  background: rgba(0,0,0,0.4)
+  border-bottom: 1px solid rgba(255,255,255,0.2)
+  color: white
+  margin: 20px
+  padding: 10px
+
+  h1
+    border-bottom: 1px solid rgba(255,255,255, 0.1)
+    margin: 0px
+    padding: 10px 0px
+  
+  .grid
+    display: flex
+    flex-wrap: wrap
+
+    input
+      background: linear-gradient(#ccc, #fff)
+      border: none
+      border-radius: 5px    
+      box-shadow: inset 1px 1px 1px rgba(0,0,0,0.3)
+      display: inline-block
+      font-size: 14px
+      flex: 1
+      outline: none
+      margin-right: 10px
+      padding: 10px
+      width: auto
+      height: 40px
+
+    .button
+      background: linear-gradient(#5a5a5a, #3c3c3c)
+      border: 1px solid black
+      border-radius: 5px     
+      cursor: pointer
+      display: inline-block
+      line-height: 40px
+      text-align: center
+      width: 120px
+      height: 40px        
+
+.queries
+  padding: 0px 20px 0px 20px
+
+  .query
+    background: rgba(0,0,0,0.4)
+    border-bottom: 1px solid rgba(255,255,255,0.2)
+    font-size: 0px
+    margin: 0px 0px 8px 0px
+    position: relative
+    height: 40px
+
+    > div
+      display: inline-block
+      line-height: 40px
+      vertical-align: middle    
+
+    .avatar   
+      // background-image: url(https://avatars2.githubusercontent.com/u/2241430?v=3&s=460)
+      background-size: cover
+      box-sizing: border-box
+      display: inline-block
+      margin: 4px 8px
+      outline: none
+      vertical-align: middle
+      width: 24px
+      height: 24px
+
+    .query-name
+        color: #62e0ff
+        cursor: pointer
+        display: inline-block
+        font-size: 14px
+        margin: 0px 0px 0px 4px
+        text-decoration: none
+
+    .tags
+      color: grey    
+      display: inline-block
+      margin-left: 16px
+      vertical-align: middle
+
+      div
+        background: rgb(245,222,179)
+        border-radius: 4px
+        color: black
+        display: inline-block
+        font-size: 12px
+        height: 24px
+        line-height: 24px
+        margin: 8px 8px 0px 0px
+        padding: 0px 10px
+        text-align: center
+        vertical-align: middle      
+
+
+    .date  
+      color: grey
+      font-size: 12px
+      margin-right: 4px
+      min-width: 180px
+      text-align: right
+
+
+    .storage
+      color: grey 
+      font-size: 12px
+      margin: 0px 8px 0px 0px
+
+      &:after
+        content: ")"
+
+      &:before
+        content: "("
+
+    .right
+      position: absolute
+      right: 0px
+
+      > div
+        display: inline-block      
+        vertical-align: middle
+
+      .control
+        background: #212121
+        border-left: 1px solid #333
+        box-sizing: border-box
+        cursor: pointer
+        position: relative
+        width: 40px
+        height: 40px
+
+        &:after
+          background-position: center
+          background-repeat: no-repeat
+          background-size: 16px    
+          -webkit-filter: invert(100%)
+          position: absolute
+          width: 40px
+          height: 40px
+          content: ""     
+
+        &.fork:after
+          background-image: url(https://cdn0.iconfinder.com/data/icons/octicons/1024/git-branch-128.png)
+          
+          
+      

@@ -3,26 +3,13 @@
 
     <head>
         <title><%= typeof(remoteDocumentState.queryName) == "undefined" ? "Mongo Web IDE" : remoteDocumentState.queryName %></title>
-        <link rel="stylesheet" href="/public/index.css">
-        <link rel="stylesheet" href="/public/lib/nvd3/nv.d3.css">
+        <link rel="stylesheet" href="/public/styles/ide.css">
+        <link rel="stylesheet" href="/public/styles/menu.css">
+        <link rel="stylesheet" href="/node_modules/nvd3/nv.d3.css"/>
         <script type="text/javascript">
             var remoteDocumentState = <%- JSON.stringify(remoteDocumentState) %>;
         </script>
-        <script src="/public/lib/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
-        <script src="/public/lib/ace-builds/src-noconflict/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>
-        <script src="/public/lib/jquery/dist/jquery.min.js" type="text/javascript"></script>
-        <script src="/public/lib/underscore/underscore.js" type="text/javascript"></script>
-        <script src="/public/lib/keymaster/keymaster.js" type="text/javascript"></script>
-        <script src="/public/lib/LiveScript/browser/livescript.js" type="text/javascript"></script>
-        <script src="/public/lib/d3/d3.js" type="text/javascript"></script>
-        <script src="/public/lib/nvd3/nv.d3.js" type="text/javascript"></script>
-        <script src="/public/lib/prelude-browser-min/index.js" type="text/javascript"></script>
-        <script src="/public/transformation-context.js" type="text/javascript"></script>
-        <script src="/public/presentation-context.js" type="text/javascript"></script>
-        <script src="/public/lib/react/react.js" type="text/javascript"></script>
-        <script src="/public/utils.js" type="text/javascript"></script>
-        <script src="/public/query-search.js" type="text/javascript"></script>
-        <script src="/public/index.js" type="text/javascript"></script>
+        <script src="/public/scripts/ide.js" type="text/javascript"></script>
     </head>
 
     <body>        
@@ -32,7 +19,7 @@
         <div class="query-search-container">
         </div>        
         <div class="menu">
-            <a class="logo" href="/list?_=<%= new Date().getTime() %>"></a>
+            <a class="logo" href="/?_=<%= new Date().getTime() %>"></a>
             <a class="button" href="/" target="_blank">New</a>
             <a class="button" id="save">Save</a>
             <a class="button" id="execute-query">Execute</a>
@@ -44,10 +31,12 @@
                 <span class="client">Client</span>
                 <span class="server">Server</span>
             </a>            
-            <span class="button">
+            <a class="button">
                 <input type="checkbox" name="multi-query" id="multi-query">
                 <label for="multi-query">Multi</label>
-            </span>
+            </a>
+            <a class="button" id="reset-to-server">Reset</a>
+            <a class="link" href="/logout">Logout</a>
         </div>
         <div class="details" style="display: none">
             <div>

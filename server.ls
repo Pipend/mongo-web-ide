@@ -1,35 +1,22 @@
-async = require \async 
-config = require \./config 
+async = require \async
+config = require \./config
 express = require \express
+session = require \express-session
 fs = require \fs
 md5 = require \MD5
 moment = require \moment
-vm = require \vm 
 {compile} = require \LiveScript
-{concat-map, dasherize, filter, find, keys, map, Str} = require \prelude-ls
 {MongoClient, ObjectID, Server} = require \mongodb
+passport = require \passport
+github-strategy = (require \passport-github).Strategy
+{concat-map, dasherize, filter, find, keys, map, Str} = require \prelude-ls
+request = require \request
+vm = require \vm
 
-app = express!
-    ..set \views, __dirname + \/
-    ..engine \.html, (require \ejs).__express
-    ..set 'view engine', \ejs    
-    ..use (require \cors)!
-    ..use (require \cookie-parser)!
-    ..use "/public" express.static "#__dirname/public"
-    ..use (req, res, next)->
-        return next! if req.method is not \POST
-        body = ""
-        req.on \data, -> body += it 
-        req.on \end, -> 
-            req <<< {body: JSON.parse body}
-            next!
-
+# global variables
 query-cache = {}
 
-(err, db) <- MongoClient.connect config.mongo, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.mongo}"
-
+# utility functions
 compile-and-execute-livescript = (livescript-code, context)->
 
     die = (err)->
@@ -50,43 +37,6 @@ compile-and-execute-livescript = (livescript-code, context)->
 die = (res, err)->
     res.status 500
     res.end err
-
-get-all-keys-recursively = (object, filter-function)->
-    keys object |> concat-map (key)-> 
-        return [] if !filter-function key, object[key]
-        return [key] ++ (get-all-keys-recursively object[key], filter-function)  if typeof object[key] == \object
-        [key]
-
-get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"}
-
-get-query-context = ->
-    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
-    parse-date = (s) -> new Date s
-    to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
-    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
-    {
-        object-id: ObjectID
-        bucketize
-        timestamp-to-day: bucketize 86400000
-        today: today!
-        parse-date
-        to-timestamp
-    }
-
-get-query-by-id = (query-id, callback) !->
-    (err, results) <- db.collection \queries .aggregate do 
-        [
-            {
-                $match: 
-                    query-id: parse-int query-id
-            }
-            {
-                $sort: _id: - 1
-            }
-        ]
-    return callback err, null if !!err
-    callback null, if !!results and results.length > 0 then results.0 else null
 
 execute-query = (server-name, database, collection, query, parameters, callback) !->
 
@@ -116,37 +66,166 @@ execute-query = (server-name, database, collection, query, parameters, callback)
 
     callback null, result
 
-# load a new document
-app.get \/, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state! <<< config.default-connection-details} 
+get-all-keys-recursively = (object, filter-function)->
+    keys object |> concat-map (key)-> 
+        return [] if !filter-function key, object[key]
+        return [key] ++ (get-all-keys-recursively object[key], filter-function)  if typeof object[key] == \object
+        [key]
 
-app.get \/aggregator, (req, res) ->
-    res.render \public/aggregator.html, {}
+get-default-document-state = -> 
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
 
-# load an existing document
-# returns JSON if request contains accept: application/json 
-app.get "/:queryId(\\d+)", (req, res)->
-    {query-id} = req.params
-    err, remote-document-state <- get-query-by-id query-id
-    if (req.headers.accept.index-of \application/json) > -1
-        res.type \application/json
-        res.send <| JSON.stringify remote-document-state
-    else
-        res.render \public/index.html, {remote-document-state: (remote-document-state or get-default-document-state!)} 
+get-query-context = ->
+    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
+    parse-date = (s) -> new Date s
+    to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
+    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
+    {
+        object-id: ObjectID
+        bucketize
+        timestamp-to-day: bucketize 86400000
+        today: today!
+        parse-date
+        to-timestamp
+    }
 
-#
+get-query-by-id = (db, query-id, callback) !->
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: 
+                    query-id: parse-int query-id
+            }
+            {
+                $sort: _id: - 1
+            }
+        ]
+    return callback err, null if !!err
+    callback null, if !!results and results.length > 0 then results.0 else null
+
+# connect to mongo-db
+(err, db) <- MongoClient.connect config.mongo, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.mongo}"
+
+# create & setup express app
+app = express!
+    ..set \views, __dirname + \/
+    ..engine \.html, (require \ejs).__express
+    ..set 'view engine', \ejs    
+    ..use (require \cors)!
+    ..use (require \cookie-parser)!
+    ..use (req, res, next)->
+        return next! if req.method is not \POST
+        body = ""
+        req.on \data, -> body += it 
+        req.on \end, -> 
+            req <<< {body: JSON.parse body}
+            next!
+    ..use (require \method-override)!
+    ..use (session {secret: 'keyword cat'})
+    ..use passport.initialize!
+    ..use passport.session!
+    ..use (req, res, next)->
+
+        # get the user object from query string & store it in the session
+        user-id = req?.query?.user-id
+        req._passport.session.user = {id: user-id, username: \guest} if !!user-id
+
+        # get the user object from the session & store it in the request
+        # the req.is-authenticated() method checkes the request object
+        if !!req._passport.session.user
+            property = req?._passport?.instance?._userProperty or \user
+            req[property] = req._passport.session.user
+
+        next!
+
+    ..use "/public" express.static "#__dirname/public"
+    ..use "/node_modules" express.static "#__dirname/node_modules"
+
+# github passport strategy
+passport.use new github-strategy do 
+    {
+        clientID: config.github.client-id,
+        client-secret: config.github.client-secret,
+        callbackURL: "http://127.0.0.1:3000/auth/github/callback"
+    }
+    (accessToken, refreshToken, profile, done) ->
+
+        die = (err)->
+            console.log "github authentication error: #{err}"
+            return done err, null 
+
+        organizations-url = profile?._json?.organizations_url
+        return die "organizations url not found" if !organizations-url
+
+        (error, response, body) <- request do 
+            headers:
+                'User-Agent': "Mongo Web IDE"
+            url: organizations-url
+        return die error if !!err
+
+        organization-member = (JSON.parse body) |> find (.login == config.organization-name)
+        return die "not part of #{config.organization-name}" if !organization-member
+
+        done null, profile
+
+# convert github data to user-id
+passport.serialize-user (user, done)-> done null, user
+
+# convert user-id to github data
+passport.deserialize-user (obj, done)-> done null, obj
+
+# redirect user to github
+app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+
+# user is redirected to this route by github
+app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
+
+# login with github page
+app.get \/login, (req, res)-> 
+    return (res.redirect \/) if req.is-authenticated!
+    res.render \public/login.html
+
+# invokes req.logout!
+app.get \/logout, (req, res)-> 
+    req.logout!
+    res.redirect \/
+
+# ROUTES FROM THIS POINT ON REQUIRE AUTHENTICATION
+app.use (req, res, next)->
+    return next! if req.is-authenticated!
+    res.redirect \/login
+
+# display a list of all queries
+app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
+
+# set the status property of the query to false
 app.get "/delete/:queryId", (req, res)->
     (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
     return die res, err if !!err    
-
-    console.log \updated, updated
-
     res.end!
+
+# transpile livescript, execute the mongo aggregate query and return the results
+app.post \/execute, (req, res)->    
+
+    {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
+
+    # return cached result if any
+    key = md5 query    
+    return res.end query-cache[key] if cache and !!query-cache[key]
+
+    err, result <-  execute-query server-name, database, collection, query, parameters
+    return die res, err.to-string! if !!err
+
+    # cache and return the response
+    res.end (query-cache[key] = JSON.stringify result, null, 4)
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res)->
     res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
-#
+# TODO: implement
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
     (err, results) <- query-db.collection \events .aggregate do 
         [
@@ -161,10 +240,15 @@ app.get \/keywords/:serverName/:database/:collection, (req, res)->
     collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
     res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
-# list all the queries
+# return a list of all queries
 app.get \/list, (req, res)->
+    search-string = req.query?.name or ""
     (err, results) <- db.collection \queries .aggregate do
         [
+            {
+                $match: 
+                    query-name: {$regex: ".*#{search-string}.*", $options: \i}
+            }
             {
                 $sort:
                     _id: 1
@@ -172,32 +256,25 @@ app.get \/list, (req, res)->
             {
                 $group:
                     _id: \$queryId
+                    creation-time: $first: \$creationTime
+                    modification-time: $last: \$creationTime
                     query-name: $last: \$queryName
                     status: $last: \$status
             }
+            {
+                $project: 
+                    _id: 0
+                    query-id: "$_id"
+                    query-name: 1
+                    creation-time: 1
+                    modification-time: 1
+                    status: 1
+            }
         ]
     return die res, err if !!err
-    res.render \public/list.html, {queries: results |> map ({_id, query-name, status})-> {query-id: _id, query-name, status}}
+    res.end JSON.stringify results
 
-# transpile livescript, execute the mongo aggregate query and return the results
-app.post \/query, (req, res)->
-
-    {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
-
-    # return cached result if any
-    key = md5 query    
-    return res.end query-cache[key] if cache and !!query-cache[key]
-
-    err, result <-  execute-query server-name, database, collection, query, parameters
-
-    console.log err if !!err
-
-    return die res, err.to-string! if !!err
-
-    # cache and return the response
-    res.end query-cache[key] = JSON.stringify result, null, 4
-
-
+# TODO: merge into single route
 app.post \/multi-query, (req, res) ->
 
     convert-query-to-valid-livescript = (query)->
@@ -226,7 +303,7 @@ app.post \/multi-query, (req, res) ->
     get-transformation-context = -> {}
 
     run-query = (query-id, parameters, callback) -->
-        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id query-id
+        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
         return callback err if !!err
         query := convert-query-to-valid-livescript query
         err, result <- execute-query server-name, database, collection, query, parameters
@@ -254,6 +331,21 @@ app.post \/multi-query, (req, res) ->
     # res.type \application/json
     res.end <| JSON.stringify query-res, null, 4
     
+# load a new document
+app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!} 
+
+# load an existing document
+app.get "/query/:queryId(\\d+)", (req, res)->
+
+    {query-id} = req.params
+
+    err, remote-document-state <- get-query-by-id db, query-id
+    if (req.headers.accept.index-of \application/json) > -1
+        res.type \application/json
+        res.send <| JSON.stringify remote-document-state
+    else
+        res.render \public/ide.html, {remote-document-state: (remote-document-state or get-default-document-state!)} 
+
 # save the code to mongodb
 app.post \/save, (req, res)->
 
@@ -261,27 +353,6 @@ app.post \/save, (req, res)->
     return die res, err if !!err
 
     res.end JSON.stringify [null, records.0]
-
-# query search based on name
-app.get \/search, (req, res)->
-    (err, results) <- db.collection \queries .aggregate do 
-        [
-            {
-                $match: 
-                    query-name: {$regex: ".*#{req.query.name}.*", $options: \i}
-                    status: true
-            }
-            {
-                $sort: _id: 1
-            }
-            {
-                $group: 
-                    _id: \$queryId
-                    query-name: $last: \$queryName
-            }            
-        ]
-    return die res, err if !!err
-    res.end JSON.stringify (results |> map ({_id, query-name})-> {query-id: _id, query-name})
 
 app.listen config.port
 console.log "listening on port #{config.port}"
