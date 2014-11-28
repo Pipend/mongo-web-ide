@@ -194,13 +194,13 @@ get-query-parameters = ->
 get-save-function = (document-state)->
 
     # if there are no changes to the document return noop as the save function
-    return [false, (callback)-> callback! if !!callback] if document-state `is-equal-to-object` window.remote-document-state
+    return [false, (callback)-> callback! if !!callback] if !has-document-changed document-state
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
     [
         true
-        (callback)->        
+        (callback)->
 
             # update the local-storage before making the request to recover from unexpected crash
             save-to-local-storage document-state
@@ -212,6 +212,17 @@ get-save-function = (document-state)->
             callback! if !!callback
 
     ]
+
+# compares document-state with remote document state
+has-document-changed = (document-state)->
+
+    remove-ui-key = ->
+        it 
+            |> obj-to-pairs
+            |> filter ([key, ...]) -> key != \ui
+            |> pairs-to-obj
+
+    !((remove-ui-key document-state) `is-equal-to-object` (remove-ui-key window.remote-document-state))
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
@@ -249,7 +260,7 @@ plot-chart = (chart, result)->
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
 
 # update the size of elements based on editor & window width & height
-resize = ->
+resize-ui = ->
     $ \.output .width window.inner-width - ($ \.editors .width!) - ($ \.resize-handle.vertical .width!)
     $ \.output .height window.inner-height - ($ \.menu .height!)
     $ "pre, svg" .width ($ \.output .width!)
@@ -304,7 +315,7 @@ show-output-tag = (tag)->
 try-get = (value, default-value)-> if !!value then value else default-value
 
 # update the editors, document.title etc using the document-state (persisted to local-storage and server)
-update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, ui})->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, ui}, update-ui = true)->
     document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
@@ -316,17 +327,20 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
     transformation-editor.set-value transformation
     presentation-editor.set-value presentation
     [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.session.selection.clear-selection!
-    if !!ui
-        if !!ui.editors
-            ui.editors |> each ({id, height}) -> $ '#' + id .css \height, height
-        if !!ui.left-editors-width
-            $ \.editors .css \width, ui.left-editors-width
+    if update-ui
+        if !!ui
+            if !!ui.editors
+                ui.editors |> each ({id, height}) -> $ '#' + id .css \height, height
+            if !!ui.left-editors-width
+                $ \.editors .css \width, ui.left-editors-width
+        resize-ui!
+        resize-editors!
 
 # the state button is only visible when there is copy of the query on the server
 # the highlight on the state button indicates the client version differs the server version
 update-remote-state-button = (document-state)->
     $ \#remote-state .toggle !!window.remote-document-state.query-id
-    $ \#remote-state .toggle-class \highlight !(document-state `is-equal-to-object` window.remote-document-state)
+    $ \#remote-state .toggle-class \highlight (has-document-changed document-state)
 
 # on dom ready
 $ ->
@@ -338,7 +352,7 @@ $ ->
     empty-space = (window.inner-height - $ \.menu .outer-height!) - 3 * ($ \.editor-name .outer-height! + $ \.resize-handle.horizontal .outer-height!)
     $ \.editor .height empty-space / 3
 
-    resize!
+    resize-ui!
 
     # width adjustment handle
     $ \.resize-handle.vertical .unbind \mousedown .bind \mousedown, (e1)->
@@ -347,7 +361,7 @@ $ ->
         $ window .unbind \mousemove .bind \mousemove, (e2)->            
             $ \.editors .width (initial-width + (e2.page-x - e1.page-x))
             resize-editors!
-            resize!
+            resize-ui!
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
@@ -359,12 +373,12 @@ $ ->
         $ window .unbind \mousemove .bind \mousemove, (e2)-> 
             $editor.height (initial-height + (e2.page-y - e1.page-y))
             resize-editors!
-            resize!
+            resize-ui!
 
         $ window .unbind \mouseup .bind \mouseup, -> $ window .unbind \mousemove .unbind \mouseup
 
     # resize the chart on window resize
-    window.onresize = resize
+    window.onresize = resize-ui
 
     # create the editors
     query-editor := create-livescript-editor \query-editor
@@ -459,15 +473,21 @@ $ ->
     $ \#remote-state .on \click, ->
         
         if ($ @ .attr \data-state) == \client
+            save-to-local-storage get-document-state!
             $ @ .attr \data-state, \server
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
-            update-dom-with-document-state window.remote-document-state
+            update-dom-with-document-state window.remote-document-state, false
             
         else
             $ @ .attr \data-state, \client
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
-            update-dom-with-document-state JSON.parse local-storage.get-item query-id                
+            update-dom-with-document-state (JSON.parse local-storage.get-item query-id), false
 
+    $ \#multi-query .on \change, -> 
+        console.log \state, get-document-state!
+        update-remote-state-button get-document-state!
+
+    # reset local document state to match remote version
     $ \#reset-to-server .on \click, ->
         return if !confirm "Are you sure you want to reset query to match server version?"
         update-dom-with-document-state window.remote-document-state

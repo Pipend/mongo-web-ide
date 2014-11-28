@@ -29,11 +29,11 @@ query-list = React.create-class do
                 @.state.queries |> map ({query-id, query-name, creation-time, modification-time, storage})->
                     $div {class-name: \query},
                         $div {class-name: \avatar}
+                        $div {class-name: \date}, moment(modification-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
                         $a {class-name: \query-name, href: "/query/#{query-id}"}, query-name
-                        $div {class-name: \storage}, (storage |> Str.join " & ")
                         $div {class-name: \tags}
-                        $div {class-name: \right},                            
-                            $div {class-name: \date}, moment(modification-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
+                        $div {class-name: \right},        
+                            $div {class-name: \storage}, (storage |> Str.join " & ")                                                
                             $div {class-name: 'control fork'}
                             
     on-search-string-change: (e)->

@@ -30,6 +30,10 @@ search-queries-by-name = (name, callback)->
                     server-version = queries |> find -> it.query-id == query-id
                     (typeof server-version == \undefined) || server-version.status
 
+                # remove queries that do not match search criterion
+                |> filter ({query-name})->
+                    (query-name.to-lower-case!.trim!.index-of name.to-lower-case!.trim!) != -1
+
             # remove queries that have been deleted
             server-queries = queries
                 |> filter (.status == true)
