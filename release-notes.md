@@ -18,11 +18,10 @@
 * new query search interface
 * login with github & guest account
 * query parameters
-* ability to execute multiple queries
 * ability to reset client version to match server
 * persist ui changes (dimensions of the editors) per query
 
 
 # 1.5.1 (hotfix)
 
-* added to cheerio to packages.json
+* added cheerio to packages.json

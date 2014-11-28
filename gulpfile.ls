@@ -38,7 +38,7 @@ watch-entries = (entries, callback)->
     (err) <- async.each-series do 
         entries
         ({directory, file}, callback)->
-            b = browserify watchify.args <<< {debug: true}
+            b = browserify watchify.args <<< {debug: false}
             b.add "#{directory}/#{file}.ls"
             b.transform \liveify    
             b.transform \cssify
