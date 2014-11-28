@@ -25,6 +25,10 @@ config =
       database: \YourDBName
       collection: \YourCollectionName
     }
+    github: {
+      client-id: ""
+      client-secret: ""
+    }
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
     mongoOptions:
       auto_reconnect: true
@@ -33,6 +37,7 @@ config =
       server:
         socketOptions: 
           keepAlive: 1
+    organization-name: ""
     port: 3000
     test-ips: <[127.0.0.1 localhost]>
   release: {}
