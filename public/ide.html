@@ -5,7 +5,8 @@
         <title><%= typeof(remoteDocumentState.queryName) == "undefined" ? "Mongo Web IDE" : remoteDocumentState.queryName %></title>
         <link rel="stylesheet" href="/public/styles/ide.css">
         <link rel="stylesheet" href="/public/styles/menu.css">
-        <link rel="stylesheet" href="/node_modules/nvd3/nv.d3.css"/>
+        <link rel="stylesheet" href="/public/styles/query-search.css">
+        <link rel="stylesheet" href="/node_modules/nvd3/nv.d3.css"/>        
         <script type="text/javascript">
             var remoteDocumentState = <%- JSON.stringify(remoteDocumentState) %>;
         </script>

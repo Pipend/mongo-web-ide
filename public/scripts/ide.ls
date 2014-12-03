@@ -508,7 +508,7 @@ $ ->
                 window.open "/#{query-id}", \_blank
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
-        cancel-event e
+        false
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
 
