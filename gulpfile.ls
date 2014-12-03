@@ -1,6 +1,7 @@
 async = require \async
 browserify = require \browserify
 cheerio = require \cheerio
+{browserify-debug-mode} = require \./config
 fs = require \fs
 gulp = require \gulp
 gulp-browserify = require \gulp-browserify 
@@ -38,7 +39,7 @@ watch-entries = (entries, callback)->
     (err) <- async.each-series do 
         entries
         ({directory, file}, callback)->
-            b = browserify watchify.args <<< {debug: false}
+            b = browserify watchify.args <<< {debug: browserify-debug-mode}
             b.add "#{directory}/#{file}.ls"
             b.transform \liveify    
             b.transform \cssify

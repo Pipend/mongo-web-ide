@@ -143,12 +143,14 @@ app = express!
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
+# "http://127.0.0.1:3000/auth/github/callback"
+
 # github passport strategy
 passport.use new github-strategy do 
     {
-        clientID: config.github.client-id,
-        client-secret: config.github.client-secret,
-        callbackURL: "http://127.0.0.1:3000/auth/github/callback"
+        clientID: config.github.client-id
+        client-secret: config.github.client-secret
+        callbackURL: "http://www.google.com"
     }
     (accessToken, refreshToken, profile, done) ->
 
@@ -332,7 +334,7 @@ app.post \/multi-query, (req, res) ->
     res.end <| JSON.stringify query-res, null, 4
     
 # load a new document
-app.get \/query, (req, res)-> res.render \public/index.html, {remote-document-state: get-default-document-state!} 
+app.get \/query, (req, res)-> res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
 
 # load an existing document
 app.get "/query/:queryId(\\d+)", (req, res)->

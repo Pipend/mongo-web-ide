@@ -25,3 +25,7 @@
 # 1.5.1 (hotfix)
 
 * added cheerio to packages.json
+
+# 1.5.2 (hotfix)
+
+* fixed broken "new query button" link
