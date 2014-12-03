@@ -13,6 +13,7 @@
 config =
   env: \local
   all:
+    browserify-debug-mode: false
     connection-strings: [
       {
         name: \local
