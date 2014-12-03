@@ -216,8 +216,14 @@ app.post \/execute, (req, res)->
     key = md5 query    
     return res.end query-cache[key] if cache and !!query-cache[key]
 
+    start-time = new Date!.get-time!
+
     err, result <-  execute-query server-name, database, collection, query, parameters
     return die res, err.to-string! if !!err
+
+    execution-time =  (new Date!.get-time! - start-time) / 1000
+
+    console.log "#{execution-time}s"
 
     # cache and return the response
     res.end (query-cache[key] = JSON.stringify result, null, 4)

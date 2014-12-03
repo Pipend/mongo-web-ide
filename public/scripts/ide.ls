@@ -455,7 +455,7 @@ $ ->
         forked-document-state = get-document-state new-query-id
         forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "/#{new-query-id}", \_blank
+        window.open "/query/#{new-query-id}", \_blank
 
     # info
     $ \#info .on \click, -> $ \.details .toggle!
