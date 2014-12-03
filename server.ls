@@ -150,7 +150,6 @@ passport.use new github-strategy do
     {
         clientID: config.github.client-id
         client-secret: config.github.client-secret
-        callbackURL: "http://www.google.com"
     }
     (accessToken, refreshToken, profile, done) ->
 
