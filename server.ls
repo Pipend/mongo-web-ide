@@ -143,8 +143,6 @@ app = express!
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
-# "http://127.0.0.1:3000/auth/github/callback"
-
 # github passport strategy
 passport.use new github-strategy do 
     {
@@ -230,7 +228,7 @@ app.post \/execute, (req, res)->
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res)->
-    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+    res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
 # TODO: implement
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
