@@ -143,8 +143,6 @@ app = express!
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
-# "http://127.0.0.1:3000/auth/github/callback"
-
 # github passport strategy
 passport.use new github-strategy do 
     {
@@ -216,15 +214,21 @@ app.post \/execute, (req, res)->
     key = md5 query    
     return res.end query-cache[key] if cache and !!query-cache[key]
 
+    start-time = new Date!.get-time!
+
     err, result <-  execute-query server-name, database, collection, query, parameters
     return die res, err.to-string! if !!err
+
+    execution-time =  (new Date!.get-time! - start-time) / 1000
+
+    console.log "#{execution-time}s"
 
     # cache and return the response
     res.end (query-cache[key] = JSON.stringify result, null, 4)
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res)->
-    res.end JSON.stringify ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+    res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
 # TODO: implement
 app.get \/keywords/:serverName/:database/:collection, (req, res)->

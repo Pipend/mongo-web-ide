@@ -1,5 +1,4 @@
 ace = require \brace
-
 # modifies the ace editor config, 
 # usage: ..set-theme \ace/theme/monokai
 # usage: ..set-mode \ace/mode/livescript
@@ -82,9 +81,6 @@ execute-query = do ->
 
     (query, parameters, server-name, database, collection, multi-query, cache, callback)->
     
-        # TODO: fix
-        cache = false
-
         if not multi-query
             query = convert-query-to-valid-livescript query
 
@@ -95,14 +91,13 @@ execute-query = do ->
             collection
             query
             parameters
-            cache
         }
 
         # return cached response (if any)
-        return callback previous.err, previous.result if request `is-equal-to-object` previous.request
+        return callback previous.err, previous.result if cache and request `is-equal-to-object` previous.request
 
         #TODO: use same url for both multi-query and query
-        query-result-promise = $.post (if multi-query then \/multi-query else \/execute), JSON.stringify request
+        query-result-promise = $.post (if multi-query then \/multi-query else \/execute), JSON.stringify {cache} <<< request
             ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
@@ -123,7 +118,9 @@ execute-query-and-display-results = do ->
         $ \.preloader .show!        
 
         # query, transform & plot         
-        (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, true
+        cache = should-cache!
+
+        (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
 
         busy := false
 
@@ -132,6 +129,9 @@ execute-query-and-display-results = do ->
         # clear existing result
         $ \pre .html ""
         $ \svg .empty!
+
+        # update the cache indicator
+        $ \#cache .parent! .toggle-class "highlight green", cache
 
         display-error = (err)->
             show-output-tag \pre
@@ -306,6 +306,9 @@ set-hash = (obj)->
         |> (.join \&)
         |> -> "#?#{it}"
 
+# returns true if the cache checkbox in the UI is enabled
+should-cache = -> ($ '#cache:checked' .length) > 0
+
 # toggle between pre (for json & table) and svg (for charts)
 show-output-tag = (tag)->
     $ \.output .children! .each -> 
@@ -340,7 +343,7 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
 # the highlight on the state button indicates the client version differs the server version
 update-remote-state-button = (document-state)->
     $ \#remote-state .toggle !!window.remote-document-state.query-id
-    $ \#remote-state .toggle-class \highlight (has-document-changed document-state)
+    $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state)
 
 # on dom ready
 $ ->
@@ -455,7 +458,7 @@ $ ->
         forked-document-state = get-document-state new-query-id
         forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
         local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "/#{new-query-id}", \_blank
+        window.open "/query/#{new-query-id}", \_blank
 
     # info
     $ \#info .on \click, -> $ \.details .toggle!
@@ -508,7 +511,7 @@ $ ->
                 window.open "/#{query-id}", \_blank
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
-        cancel-event e
+        false
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
 

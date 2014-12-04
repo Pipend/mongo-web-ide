@@ -1,6 +1,8 @@
 {filter, find, fold, map, sort-by} = require \prelude-ls
 $ = require \jquery-browserify
 React = require \react
+{$a, $div, $input, $li, $ul} = require \./react-ls.ls
+{search-queries-by-name} = require \./queries.ls
 
 module.exports.query-search = React.create-class do
 
@@ -22,8 +24,12 @@ module.exports.query-search = React.create-class do
 
     on-input: (e)->        
         self = @
-        (queries) <- @search-queries (e?.current-target?.value or "")
-        self.set-state {queries, current-index: 0}                        
+        (err, queries) <- search-queries-by-name (e?.current-target?.value or "")        
+        return console.error err if !!err
+        self.set-state {
+            queries: queries |> sort-by (.match-index) 
+            current-index: 0
+        }
 
     on-key-down: (e)->
         key-code = e?.which or 0
@@ -36,35 +42,9 @@ module.exports.query-search = React.create-class do
             li = $ @get-DOM-node! .find "li:eq(#{current-index})"
             li-position = li.prev-all! |> fold ((memo, value)-> memo + ($ value .outer-height!)), 0
             ul.0.scroll-top = Math.max 0, (li-position + li.outer-height! - ul.height!)
-            return cancel-event e
+            return false
 
         else if key-code == 13
             @.props.on-query-selected @?.state?.queries?[@?.state?.current-index]            
-            return cancel-event e
-
-    search-queries: (name, callback)->
-        @request.abort! if !!@request
-        @request = $.get "/search?name=#{name}", (queries)-> 
-
-            queries = JSON.parse queries
-
-            local-queries = [0 to local-storage.length] 
-                |> map -> local-storage.key it
-                |> filter -> !!it
-                |> map -> JSON.parse (local-storage.get-item it)
-                |> filter -> (it?.query-name?.to-lower-case!.index-of name.to-lower-case!) != -1
-
-            queries = queries
-                |> filter ({query-id})->
-                    local-query = local-queries |> find -> it.query-id == query-id
-                    typeof local-query == \undefined
-
-            all-queries = queries ++ local-queries
-                |> filter -> !!it?.query-name
-                |> map -> it <<< {match-index: it.query-name.to-lower-case!.index-of name.to-lower-case!}
-                |> sort-by (.match-index)
-
-            callback all-queries
-
-
+            return false
 

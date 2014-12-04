@@ -53,6 +53,9 @@ search-queries-by-name = (name, callback)->
                         m
                     ), [null, []]
                     query <<< {storage}
+                |> map ({query-name}:query)-> 
+                    match-index = query-name.to-lower-case!.index-of name.to-lower-case!
+                    {} <<< query <<< {match-index}
 
             callback null, all-queries
                 
