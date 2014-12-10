@@ -422,12 +422,13 @@ app.get "/tree/:queryId([a-zA-Z0-9]+)", (req, res)->
                     branch-id: 1
                     query-id: 1
                     query-name: 1
+                    creation-time: 1
                     selected: $eq: [\$queryId, req.params.query-id]
             }
         ]
 
     return die res, err if !!err
-    res.render "public/tree.html", {queries: results}
+    res.render "public/tree.html", {queries: (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"})}
 
 app.listen config.port
 console.log "listening on port #{config.port}"

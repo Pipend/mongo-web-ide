@@ -1,11 +1,35 @@
 body
-	margin: 0px
-	padding: 0px
+    font-family: helvetica
+    margin: 0px
+    padding: 0px
+
+.tooltip
+    background: white
+    border: 1px solid #ccc
+    border-radius: 4px
+    padding: 10px
+    position: absolute
+    white-space: nowrap
+    div
+        margin-bottom: 8px
+        span
+            &:first-child           
+                display: inline-block                
+                min-width: 80px
+                text-align: right
+                &:after
+                    content: ":"
+            &:last-child
+                font-weight: bold
+                margin-left: 4px
 
 .link
-	fill: none
-	stroke-width: 2px
+    fill: none
+    stroke-width: 1px
+
+    &.highlight
+        stroke-width: 3px
 
 .node
-	cursor: pointer
-	stroke-width: 2px
+    cursor: pointer    
+    stroke-width: 1px
