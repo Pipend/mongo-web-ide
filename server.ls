@@ -9,7 +9,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, filter, find, keys, map, Str} = require \prelude-ls
+{concat-map, difference, dasherize, filter, find, keys, map, Str} = require \prelude-ls
 request = require \request
 vm = require \vm
 
@@ -217,10 +217,66 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
         res.render \public/ide.html, {remote-document-state: (remote-document-state or get-default-document-state!)}
 
 # set the status property of the query to false
-app.get "/delete/:queryId", (req, res)->
-    (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
-    return die res, err if !!err    
-    res.end!
+app.get "/delete/query/:queryId", (req, res)->
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match:
+                    query-id: req.params.query-id
+            }
+        ]
+    return die res, err if !!err
+    
+    (err) <- db.collection \queries .update {query-id: req.params.query-id}, {$set: {status: false}}
+    return die res err if !!err
+
+    (err, queries-updated) <- db.collection \queries .update {parent-id: req.params.query-id}, {$set: {parent-id: results.0.parent-id}}, {multi:true}
+    return die res err if !!err    
+
+    res.end "#{queries-updated}"
+
+app.get "/delete/branch/:branchId", (req, res)->
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: 
+                    branch-id: req.params.branch-id
+            }
+            {
+                $project:
+                    query-id: 1
+                    parent-id: 1
+            }
+        ]
+    return die res, err if !!err
+    
+    parent-id = difference do
+        results |> map (.parent-id)
+        results |> map (.query-id)
+
+    console.log \parent-id, parent-id.0
+
+    # set the status to all queries in the branch to false i.e delete 'em all
+    (err) <- db.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
+    return die res, err if !!err
+
+    # reconnect the children to the parent of the branch
+    criterion =
+        $and: [
+            {
+                branch-id: $ne: req.params.branch-id
+            }
+            {
+                parent-id: $in: results |> map (.query-id)
+            }
+        ]
+    (err, queries-updated) <- db.collection \queries .update criterion, {$set: {parent-id: parent-id.0}}, {multi:true}
+    return die res, err if !!err
+
+    res.end "#{queries-updated}"
+
 
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->    
@@ -398,6 +454,7 @@ app.get "/tree/:queryId([a-zA-Z0-9]+)", (req, res)->
             {
                 $match:
                     query-id: req.params.query-id
+                    status: true
             }
             {
                 $project:
@@ -412,6 +469,7 @@ app.get "/tree/:queryId([a-zA-Z0-9]+)", (req, res)->
             {
                 $match:
                     tree-id: results.0.tree-id
+                    status: true
             }
             {
                 $sort: _id: 1

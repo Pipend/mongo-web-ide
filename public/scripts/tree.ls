@@ -98,6 +98,7 @@ plot-commit-tree = (queries, element, width, height)->
             width = tooltip.node!.offset-width
             height = tooltip.node!.offset-height
             x = if x + (width / 2) > window.inner-width then -2 * width / 2 + window.inner-width else x - width / 2
+            x = if x < 0 then 0 else x
             y = if y + height > window.inner-height then y - 16 - height else y + 16
             tooltip .attr \style, -> "left: #{x}px; top: #{y}px;"
 

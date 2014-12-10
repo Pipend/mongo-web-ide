@@ -265,6 +265,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state)->
 
                 history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
                 window.remote-document-states.unshift document-state
+                client-storage.delete-document-state query-id
                 callback null
                             
 
@@ -576,8 +577,8 @@ $ ->
     #         [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
     #         update-dom-with-document-state client-storage.get-document-state history.state, false
 
-    # $ \#multi-query .on \change, -> 
-    #     update-remote-state-button get-document-state history.state
+    $ \#multi-query .on \change, -> 
+        update-remote-state-button get-document-state history.state
 
     # # reset local document state to match remote version
     # $ \#reset-to-server .on \click, ->
