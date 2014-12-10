@@ -1,5 +1,65 @@
 $ = require \jquery-browserify
-{map, find, filter, fold, group-by, Obj, obj-to-pairs, sort-by, unique, unique-by, values} = require \prelude-ls
+d3 = require \d3-browserify
+{map, find, filter, fold, group-by, Obj, obj-to-pairs, pairs-to-obj, sort-by, unique, unique-by, values} = require \prelude-ls
+
+create-commit-tree-json = (queries, {query-id, branch-id, selected})-->
+
+    children = queries 
+        |> filter (.parent-id == query-id) 
+        |> map (create-commit-tree-json queries)
+
+    if (children |> filter (.branch-id == branch-id)).length == 0
+        children.push [{query-id: null, branch-id, selected: false, children: null}]
+
+    {query-id, branch-id, selected, children}
+
+plot-commit-tree = (queries, element, width, height)->
+
+    unique-branches = queries
+        |> group-by (.branch-id)
+        |> obj-to-pairs
+        |> map (.0)
+
+    color-scale = d3.scale.category10!.domain [0 til unique-branches.length]
+
+    branch-colors = [0 til unique-branches.length]
+        |> map (i)-> [unique-branches[i], color-scale i]
+        |> pairs-to-obj
+
+    width = window.inner-width
+    height = window.inner-height
+    
+    tree = d3.layout.tree!.size [width, height]
+
+    json = create-commit-tree-json queries, queries.0
+
+    nodes = tree.nodes json
+        |> map ({x, y}: node)->
+            node <<< {x: (y / height) * width, y: (x / width) * height}
+
+    links = tree.links nodes
+
+    element .append \svg .attr \width, width .attr \height, height
+        ..select-all \path.link
+        .data links
+        .enter!
+        .append \svg:path
+        .attr \class, \link
+        .attr \d, ({source, target})-> "M#{source.x} #{source.y} L#{target.x} #{target.y} Z"
+        .attr \opacity, ({source, target})-> if !!target?.children then 1 else 0
+        .attr \stroke, ({source, target})-> branch-colors[target.branch-id]
+        ..select-all \circle.node
+        .data nodes
+        .enter!
+        .append \svg:circle
+        .attr \class, \node
+        .attr \opacity, ({children})-> if !!children then 1 else 0
+        .attr \r, 8
+        .attr \fill, ({selected})-> if !!selected then "rgba(0,255,0,0.8)" else \white
+        .attr \stroke, ({branch-id})-> branch-colors[branch-id]
+        .attr \transform, ({x, y})-> "translate(#x, #y)"
+        .on \click, ({branch-id, query-id})-> window.open "/branch/#{branch-id}/#{query-id}", \_blank
+
 
 search-queries-by-name = (name, callback)->
 
@@ -61,4 +121,4 @@ search-queries-by-name = (name, callback)->
                 
         ..fail ({response-text})-> callback response-text, null
 
-module.exports = {search-queries-by-name}
+module.exports = {plot-commit-tree, search-queries-by-name}
