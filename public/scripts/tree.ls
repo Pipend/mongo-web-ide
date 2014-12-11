@@ -13,66 +13,85 @@ create-commit-tree-json = (queries, {query-id, branch-id, selected}:query)-->
 
     {children} <<< query
 
-plot-commit-tree = (queries, element, width, height)->
+plot-commit-tree = (queries, element, width, height, tooltip-keys)->
 
+    # compute branch colors
     unique-branches = queries
         |> group-by (.branch-id)
         |> obj-to-pairs
         |> map (.0)
-
     color-scale = d3.scale.category10!.domain [0 til unique-branches.length]
-
     branch-colors = [0 til unique-branches.length]
         |> map (i)-> [unique-branches[i], color-scale i]
         |> pairs-to-obj
 
-    width = window.inner-width
-    height = window.inner-height
-    
     tree = d3.layout.tree!.size [width, height]
 
+    # compute tree nodes & links
     json = create-commit-tree-json queries, queries.0
-
     nodes = tree.nodes json
         |> map ({x, y}: node)->
             node <<< {x: (y / height) * width, y: (x / width) * height}
-
     links = tree.links nodes
 
-    tooltip-keys = [{key: \queryId, name: \Id}, {key: \branchId, name: \Branch}, {key: \queryName, name: \Name}, {key: \creationTime, name: \Date}]
+    # create the tooltip    
+    tooltip = element .append \div .attr {class: \tooltip, style: \display:none}
+        ..append \div .attr \class, \rows
+            ..select-all \div
+                .data tooltip-keys
+                .enter!            
+                .append \div
+                    ..append \span
+                    ..append \span
+            ..append \div
 
-    tooltip = element .append \div .attr \class, \tooltip .attr \style, \display:none
-        ..select-all \div
-            .data tooltip-keys
-            .enter!
-            .append \div
-                ..append \span
-                ..append \span
+                ..append \button .text "Delete Query" .on \click, ->
+                    {query-id} = (d3.select \circle.highlight).datum!
+                    d3.text "/delete/query/#{query-id}", (err, text)->
+                        return console.log err if !!err
+                        window.location.reload!
 
+                ..append \button .text "Delete Branch" .on \click, ->
+                    {branch-id} = (d3.select \circle.highlight).datum!
+                    d3.text "/delete/branch/#{branch-id}", (err, text)->
+                        return console.log err if !!err
+                        window.location.reload!
+
+                ..append \button .text "Preview" .on \click, ->
+                    {branch-id, query-id} = (d3.select \circle.highlight).datum!
+                    window.open "/branch/#{branch-id}/#{query-id}", \_blank
+
+                ..append \div .attr \style, \clear:both
+
+        ..on \mouseleave, ->
+            d3.select \circle.highlight .attr \fill, \white
+            d3.select-all \.highlight .attr \class, ""
+            tooltip .attr \style, "display: none"
+
+    # plot the tree
     element .append \svg .attr \width, width .attr \height, height
-        ..select-all \path.link
+        ..select-all \g.link
         .data links
         .enter!
         .append \svg:path
-        .attr \class, ({source, target})-> "link branch-id-#{target.branch-id}"
+        .attr \data-branch-id, (({target: {branch-id}})-> "#branch-id")
         .attr \d, ({source, target})-> "M#{source.x} #{source.y} L#{target.x} #{target.y} Z"
         .attr \opacity, ({source, target})-> if !!target?.children then 1 else 0
         .attr \stroke, ({source, target})-> branch-colors[target.branch-id]
         ..select-all \circle.node
         .data nodes
         .enter!
-        .append \svg:circle
-        .attr \class, ({selected})-> "node " + if selected then "selected" else ""
+        .append \svg:circle        
         .attr \opacity, ({children})-> if !!children then 1 else 0
-        .attr \r, ({selected})-> if selected then 12 else 8
+        .attr \r, 8
         .attr \fill, ({branch-id, selected})-> if selected then branch-colors[branch-id] else \white
         .attr \stroke, ({branch-id})-> branch-colors[branch-id]
         .attr \transform, ({x, y})-> "translate(#x, #y)"
         .on \mouseover, ({x, y, branch-id}:query)->            
 
-            (d3.select @).attr \fill, branch-colors[branch-id]
+            (d3.select @).attr \class, \highlight .attr \fill, branch-colors[branch-id]
 
-            d3.select-all ".link.branch-id-#{branch-id}" .attr \class, "link branch-id-#{branch-id} highlight"
+            d3.select-all "path[data-branch-id=#{branch-id}]" .attr \class, \highlight
 
             tuples = query 
                 |> obj-to-pairs                
@@ -81,11 +100,10 @@ plot-commit-tree = (queries, element, width, height)->
             tooltip
                 ..select-all \span:first-child
                     .data do
-                        tuples 
-                            |> map ([key])-> 
-                                tooltip-keys
-                                    |> find -> it.key == key
-                                    |> (.name)
+                        tuples |> map ([key])-> 
+                            tooltip-keys
+                                |> find -> it.key == key
+                                |> (.name)
                     .text -> it
                 ..select-all \span:last-child
                     .data (tuples |> map (.1))
@@ -99,16 +117,16 @@ plot-commit-tree = (queries, element, width, height)->
             height = tooltip.node!.offset-height
             x = if x + (width / 2) > window.inner-width then -2 * width / 2 + window.inner-width else x - width / 2
             x = if x < 0 then 0 else x
-            y = if y + height > window.inner-height then y - 16 - height else y + 16
-            tooltip .attr \style, -> "left: #{x}px; top: #{y}px;"
-
-        .on \mouseout, ({branch-id, selected})->
-            (d3.select @).attr \fill, if selected then branch-colors[branch-id] else \white
-            d3.select-all ".link.branch-id-#{branch-id}" .attr \class, "link branch-id-#{branch-id}"
-            tooltip .attr \style, "display: none"
-
-        .on \click, ({branch-id, query-id})-> window.open "/branch/#{branch-id}/#{query-id}", \_blank
+            if y + height > window.inner-height 
+                tooltip .attr \class, "tooltip above" .attr \style, -> "left: #{x}px; top: #{y + 16 - height }px;"
+            else                 
+                tooltip .attr \class, "tooltip" .attr \style, -> "left: #{x}px; top: #{y - 16}px;"
 
 # on DOM ready
 <- $
-plot-commit-tree window.queries, (d3.select \body), window.inner-width, window.inner-height
+plot-commit-tree do 
+    window.queries 
+    d3.select \body
+    window.inner-width 
+    window.inner-height
+    [{key: \queryId, name: \Id}, {key: \branchId, name: \Branch}, {key: \queryName, name: \Name}, {key: \creationTime, name: \Date}]

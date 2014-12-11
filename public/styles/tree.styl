@@ -3,33 +3,54 @@ body
     margin: 0px
     padding: 0px
 
-.tooltip
-    background: white
-    border: 1px solid #ccc
-    border-radius: 4px
-    padding: 10px
-    position: absolute
+.tooltip    
+    position: absolute    
     white-space: nowrap
-    div
-        margin-bottom: 8px
-        span
-            &:first-child           
-                display: inline-block                
-                min-width: 80px
-                text-align: right
-                &:after
-                    content: ":"
-            &:last-child
-                font-weight: bold
-                margin-left: 4px
+    
+    &.above .rows
+        margin: 0px 0px 32px 0px
 
-.link
+    .rows
+        background: white
+        border: 1px solid #ccc
+        border-radius: 4px    
+        margin: 32px 0px 0px 0px
+        padding: 10px
+        > div
+            &:not(:last-child)
+                margin-bottom: 12px
+                span
+                    &:first-child           
+                        display: inline-block                
+                        min-width: 55px
+                        text-align: right
+                        &:after
+                            content: ":"
+                    &:last-child
+                        font-weight: bold
+                        margin-left: 4px
+
+            &:last-child
+                button
+                    background: white
+                    border: 1px solid #ccc
+                    border-bottom: 2px solid rgba(0,0,0,0.3)
+                    border-radius: 4px
+                    cursor: pointer
+                    float: right
+                    font-size: 14px
+                    outline: none
+                    padding: 8px
+                    &:not(:first-child)
+                        margin-right: 8px
+
+path
     fill: none
     stroke-width: 1px
 
     &.highlight
         stroke-width: 3px
 
-.node
+circle
     cursor: pointer    
     stroke-width: 1px
