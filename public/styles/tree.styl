@@ -4,20 +4,21 @@ body
     padding: 0px
 
 .tooltip    
+    cursor: pointer
     position: absolute    
     white-space: nowrap
     
-    &.above .rows
+    &.above .container
         margin: 0px 0px 32px 0px
 
-    .rows
+    .container
         background: white
         border: 1px solid #ccc
         border-radius: 4px    
         margin: 32px 0px 0px 0px
         padding: 10px
-        > div
-            &:not(:last-child)
+        .rows            
+            > div
                 margin-bottom: 12px
                 span
                     &:first-child           
@@ -29,20 +30,19 @@ body
                     &:last-child
                         font-weight: bold
                         margin-left: 4px
-
-            &:last-child
-                button
-                    background: white
-                    border: 1px solid #ccc
-                    border-bottom: 2px solid rgba(0,0,0,0.3)
-                    border-radius: 4px
-                    cursor: pointer
-                    float: right
-                    font-size: 14px
-                    outline: none
-                    padding: 8px
-                    &:not(:first-child)
-                        margin-right: 8px
+        .controls
+            button
+                background: white
+                border: 1px solid #ccc
+                border-bottom: 2px solid rgba(0,0,0,0.3)
+                border-radius: 4px
+                cursor: pointer
+                float: right
+                font-size: 14px
+                outline: none
+                padding: 8px
+                &:not(:first-child)
+                    margin-right: 8px
 
 path
     fill: none

@@ -516,7 +516,7 @@ $ ->
         return if ($ \#remote-state .attr \data-state) == \server
 
         document-state = get-document-state history.state
-        save-to-disk document-state
+        save-to-disk document-state if has-document-changed document-state, window.remote-document-states
         update-remote-state-button document-state
 
     document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
