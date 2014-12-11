@@ -1,0 +1,25 @@
+.conflict-dialog	
+
+	button
+		background: white
+		border: 1px solid #ccc
+		border-radius: 4px
+		cursor: pointer
+		padding: 10px
+
+	circle
+		fill: white
+		stroke: black
+
+		&.highlight			
+			fill: rgba(0,255,0,1)
+
+	line	
+		stroke: black
+
+	circle, line
+		&.dim			
+			stroke-dasharray: 6,6
+			stroke-opacity: 0.3
+		&.highlight
+			stroke-dasharray: 3,3

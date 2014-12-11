@@ -27,6 +27,7 @@ require \prelude-ls
 # normal dependencies
 base62 = require \base62
 client-storage = require \./client-storage.ls
+{conflict-dialog} = require \./conflict-dialog.ls
 $ = require \jquery-browserify
 {key} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
@@ -607,4 +608,8 @@ $ ->
         false
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
+
+
+    React.render (conflict-dialog {queries:[1,2,3,4,5], width: 320, height: 200}), document.body
+
 

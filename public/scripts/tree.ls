@@ -121,6 +121,3 @@ draw-commit-tree = (element, width, height, queries)->
 resize = -> draw-commit-tree (d3.select \body), window.inner-width, window.inner-height, window.queries
 window.onresize = resize
 resize!
-
-
-
