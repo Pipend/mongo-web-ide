@@ -144,30 +144,32 @@ app = express!
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
 # github passport strategy
-passport.use new github-strategy do 
-    {
-        clientID: config.github.client-id
-        client-secret: config.github.client-secret
-    }
-    (accessToken, refreshToken, profile, done) ->
+do ->
+    return
+    passport.use new github-strategy do 
+        {
+            clientID: config.github.client-id
+            client-secret: config.github.client-secret
+        }
+        (accessToken, refreshToken, profile, done) ->
 
-        die = (err)->
-            console.log "github authentication error: #{err}"
-            return done err, null 
+            die = (err)->
+                console.log "github authentication error: #{err}"
+                return done err, null 
 
-        organizations-url = profile?._json?.organizations_url
-        return die "organizations url not found" if !organizations-url
+            organizations-url = profile?._json?.organizations_url
+            return die "organizations url not found" if !organizations-url
 
-        (error, response, body) <- request do 
-            headers:
-                'User-Agent': "Mongo Web IDE"
-            url: organizations-url
-        return die error if !!err
+            (error, response, body) <- request do 
+                headers:
+                    'User-Agent': "Mongo Web IDE"
+                url: organizations-url
+            return die error if !!err
 
-        organization-member = (JSON.parse body) |> find (.login == config.organization-name)
-        return die "not part of #{config.organization-name}" if !organization-member
+            organization-member = (JSON.parse body) |> find (.login == config.organization-name)
+            return die "not part of #{config.organization-name}" if !organization-member
 
-        done null, profile
+            done null, profile
 
 # convert github data to user-id
 passport.serialize-user (user, done)-> done null, user
@@ -227,7 +229,9 @@ app.post \/execute, (req, res)->
     res.end (query-cache[key] = JSON.stringify result, null, 4)
 
 # extract keywords from the latest record (for auto-completion)
-app.get \/keywords/queryContext, (req, res)->
+app.post \/keywords/queryContext, (req, res) ->
+    console.log req.body.server-name
+    res.set \content-type, \application/json
     res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
 # TODO: implement
