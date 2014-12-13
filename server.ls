@@ -39,6 +39,7 @@ die = (res, err)->
     res.end err
 
 execute-json-query = (server-name, database, collection, query, callback) !-->
+
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
     return callback (new Error "server name not found"), null if typeof connection-string == \undefined
@@ -50,7 +51,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
     return callback err, null if !!err
 
     # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query
+    err, result <- mongo-client.db database .collection collection .aggregate query, allowDiskUse: true
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
@@ -116,6 +117,7 @@ app = express!
     ..set \views, __dirname + \/
     ..engine \.html, (require \ejs).__express
     ..set 'view engine', \ejs    
+    ..use (require \serve-favicon) __dirname + '/public/images/favicon.png'
     ..use (require \cors)!
     ..use (require \cookie-parser)!
     ..use (req, res, next)->
