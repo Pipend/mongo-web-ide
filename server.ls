@@ -9,7 +9,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, difference, dasherize, filter, find, keys, map, Str} = require \prelude-ls
+{concat-map, difference, dasherize, filter, find, find-index, keys, map, Str} = require \prelude-ls
 request = require \request
 vm = require \vm
 
@@ -234,8 +234,9 @@ app.get "/delete/query/:queryId", (req, res)->
     (err, queries-updated) <- db.collection \queries .update {parent-id: req.params.query-id}, {$set: {parent-id: results.0.parent-id}}, {multi:true}
     return die res err if !!err    
 
-    res.end "#{queries-updated}"
+    res.end results.0.parent-id
 
+# 
 app.get "/delete/branch/:branchId", (req, res)->
 
     (err, results) <- db.collection \queries .aggregate do 
@@ -256,8 +257,6 @@ app.get "/delete/branch/:branchId", (req, res)->
         results |> map (.parent-id)
         results |> map (.query-id)
 
-    console.log \parent-id, parent-id.0
-
     # set the status to all queries in the branch to false i.e delete 'em all
     (err) <- db.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
     return die res, err if !!err
@@ -275,11 +274,10 @@ app.get "/delete/branch/:branchId", (req, res)->
     (err, queries-updated) <- db.collection \queries .update criterion, {$set: {parent-id: parent-id.0}}, {multi:true}
     return die res, err if !!err
 
-    res.end "#{queries-updated}"
-
+    res.end parent-id.0
 
 # transpile livescript, execute the mongo aggregate query and return the results
-app.post \/execute, (req, res)->    
+app.post \/execute, (req, res)->
 
     {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
 
@@ -324,25 +322,26 @@ app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [
             {
+                $sort: _id: 1
+            }
+            {
+                $group:
+                    _id: "$branchId"
+                    query-name: $last: "$queryName"
+                    query-id: $last: "$queryId"
+                    creation-time: $first: "$creationTime"
+                    modification-time: $last: "$creationTime"
+                    status: $last: "$status"
+            }
+            {
                 $match: 
                     query-name: {$regex: ".*#{search-string}.*", $options: \i}
             }
             {
-                $sort:
-                    _id: 1
-            }
-            {
-                $group:
-                    _id: \$queryId
-                    creation-time: $first: \$creationTime
-                    modification-time: $last: \$creationTime
-                    query-name: $last: \$queryName
-                    status: $last: \$status
-            }
-            {
                 $project: 
                     _id: 0
-                    query-id: "$_id"
+                    branch-id: "$_id"
+                    query-id: "$queryId"
                     query-name: 1
                     creation-time: 1
                     modification-time: 1
@@ -432,7 +431,7 @@ app.post \/save, (req, res)->
 
     if !!results?.0 and results.0.query-id != req.body.parent-id
 
-        index-of-parent-query = [0 til results.length] |> find -> results[it].query-id == req.body.parent-id
+        index-of-parent-query = results |> find-index (.query-id == req.body.parent-id)
 
         queries-in-between = [0 til results.length] 
             |> map -> [it, results[it].query-id]
@@ -446,8 +445,8 @@ app.post \/save, (req, res)->
 
     res.end JSON.stringify records.0
 
-# plot tree
-app.get "/tree/:queryId([a-zA-Z0-9]+)", (req, res)->
+# 
+app.get "/queries/tree/:queryId", (req, res)->
 
     (err, results) <- db.collection \queries .aggregate do 
         [
@@ -486,7 +485,10 @@ app.get "/tree/:queryId([a-zA-Z0-9]+)", (req, res)->
         ]
 
     return die res, err if !!err
-    res.render "public/tree.html", {queries: (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"})}
+    res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
+
+# plot tree
+app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}
 
 app.listen config.port
 console.log "listening on port #{config.port}"

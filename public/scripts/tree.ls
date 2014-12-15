@@ -13,7 +13,7 @@ create-commit-tree-json = (queries, {query-id, branch-id, selected}:query)-->
 
     {children} <<< query
 
-draw-commit-tree = (element, width, height, queries)->
+draw-commit-tree = (element, width, height, queries, tooltip-keys, tooltip-actions)->
 
     # compute branch colors
     unique-branches = queries
@@ -29,6 +29,7 @@ draw-commit-tree = (element, width, height, queries)->
 
     # compute tree nodes & links
     json = if !!queries and queries.length >  0 then create-commit-tree-json queries, queries.0 else []
+
     nodes = tree.nodes json
         |> map ({x, y}: node)->
             node <<< {x: (y / height) * width, y: (x / width) * height}
@@ -40,32 +41,18 @@ draw-commit-tree = (element, width, height, queries)->
         tooltip = element .append \div .attr {class: \tooltip, style: \display:none}
             ..append \div .attr \class, \container
                 ..append \div .attr \class, \rows
-                ..append \div .attr \class, \controls
-
-                    ..append \button .text "Delete Query" .on \click, ->
-                        {query-id} = (svg.select \circle.highlight).datum!
-                        err, text <- d3.text "/delete/query/#{query-id}"
-                        return console.log err if !!err
-                        draw-commit-tree element, width, height, query-id
-
-                    ..append \button .text "Delete Branch" .on \click, ->
-                        {branch-id} = (svg.select \circle.highlight).datum!
-                        (err, text) <- d3.text "/delete/branch/#{branch-id}"
-                        return console.log err if !!err
-                        draw-commit-tree element, width, height, query-id
-
-                    ..append \div .attr \style, \clear:both
-
-            ..on \click, ->
-                {branch-id, query-id} = (svg.select \circle.highlight).datum!
-                window.open "/branch/#{branch-id}/#{query-id}", \_blank
+                ..append \div .attr \class, \controls 
 
             ..on \mouseleave, ->
                 svg.select \circle.highlight .attr \fill, \white
                 svg.select-all \.highlight .attr \class, ""
                 tooltip .attr \style, "display: none"
 
-    tooltip-keys = [{key: \queryId, name: \Id}, {key: \branchId, name: \Branch}, {key: \queryName, name: \Name}, {key: \creationTime, name: \Date}]
+    tooltip .select \.controls .select-all \button .data tooltip-actions
+        ..enter! .append \button
+        ..text ({label})-> label 
+        .on \click, ({on-click})-> on-click (d3.select \circle.highlight .datum!)
+        ..exit!.remove!
 
     # plot the tree
     svg = element .select \svg
@@ -118,6 +105,54 @@ draw-commit-tree = (element, width, height, queries)->
 
 # on DOM ready
 <- $
-resize = -> draw-commit-tree (d3.select \body), window.inner-width, window.inner-height, window.queries
-window.onresize = resize
-resize!
+
+draw = (current-query-id, queries)->
+
+    draw-commit-tree do 
+        (d3.select \body)
+        window.inner-width
+        window.inner-height
+        queries
+        [{key: \queryId, name: \Id}, {key: \branchId, name: \Branch}, {key: \queryName, name: \Name}, {key: \creationTime, name: \Date}]
+        [
+            {
+                label: "Delete Query"
+                on-click: (query-to-delete)->
+                    return if !confirm "Are you sure you want to delete this query"
+                    err, parent-query-id <- d3.text "/delete/query/#{query-to-delete.query-id}"
+                    return console.log err if !!err
+                    render false, if current-query-id == query-to-delete.query-id then parent-query-id else current-query-id
+            }
+            {
+                label: "Delete Branch"
+                on-click: ({branch-id})->
+                    return if !confirm "Are you sure you want to delete this branch"
+                    (err, parent-query-id) <- d3.text "/delete/branch/#{branch-id}"
+                    return console.log err if !!err                    
+                    render false, if !!(queries |> find (query)-> query.branch-id == branch-id and query.query-id == current-query-id) then parent-query-id else current-query-id
+            }
+            {
+                label: "Preview"
+                on-click: ({query-id, branch-id})-> window.open "/branch/#{branch-id}/#{query-id}", \_blank
+            }
+        ]
+
+fetch-queries = do ->
+    cache = null
+    (use-cache, query-id, callback) ->
+        return callback null, cache if !!use-cache and !!cache
+        request = $.getJSON "/queries/tree/#{query-id}"
+            ..done (response)-> callback null, cache := response
+            ..error ({response-text}) -> callback response-text, null
+
+render = (use-cache, query-id)->
+    err, queries <- fetch-queries use-cache, query-id
+    return console.log 'err', err if !!err
+    history.replace-state {query-id}, "#{query-id}", "/tree/#{query-id}"
+    draw query-id, queries
+
+window.resize = -> render true
+
+render false, window.query-id
+
+

@@ -4,7 +4,6 @@ body
     padding: 0px
 
 .tooltip    
-    cursor: pointer
     position: absolute    
     white-space: nowrap
     
@@ -31,6 +30,11 @@ body
                         font-weight: bold
                         margin-left: 4px
         .controls
+            &:after
+                clear: both
+                content: ""
+                display: block
+
             button
                 background: white
                 border: 1px solid #ccc

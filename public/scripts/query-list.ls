@@ -15,7 +15,7 @@ query-list = React.create-class do
             # Menu
             $div {class-name: \menu},
                 $a {class-name: \logo}
-                $a {class-name: \button, href: \/query, target: \_blank}, \New
+                $a {class-name: \button, href: \/branch, target: \_blank}, \New
                 $a {class-name: \link, href:\/logout}, \Logout
                 
             # Search
@@ -26,11 +26,11 @@ query-list = React.create-class do
 
             # Queries 
             $div {class-name: \queries},
-                @.state.queries |> map ({query-id, query-name, creation-time, modification-time, storage})->
+                @.state.queries |> map ({branch-id, query-id, query-name, creation-time, modification-time, storage})->
                     $div {class-name: \query},
                         $div {class-name: \avatar}
                         $div {class-name: \date}, moment(modification-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
-                        $a {class-name: \query-name, href: "/query/#{query-id}"}, query-name
+                        $a {class-name: \query-name, href: "/branch/#{branch-id}/#{query-id}"}, query-name
                         $div {class-name: \tags}
                         $div {class-name: \right},        
                             $div {class-name: \storage}, (storage |> Str.join " & ")                                                

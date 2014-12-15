@@ -7,6 +7,8 @@ module.exports =
     $button: -> create-element \button, arguments    
     $circle: -> create-element \circle, arguments
     $div: -> create-element \div, arguments
+    $g: -> create-element \g, arguments
+    $h1: -> create-element \h1, arguments
     $input: -> create-element \input, arguments
     $li: -> create-element \li, arguments
     $line: -> create-element \line, arguments
