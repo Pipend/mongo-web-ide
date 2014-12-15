@@ -1,5 +1,6 @@
 $ = require \jquery-browserify
-{map, find, filter, fold, group-by, Obj, obj-to-pairs, sort-by, unique, unique-by, values} = require \prelude-ls
+d3 = require \d3-browserify
+{map, find, filter, fold, group-by, Obj, obj-to-pairs, pairs-to-obj, sort-by, unique, unique-by, values} = require \prelude-ls
 
 search-queries-by-name = (name, callback)->
 

@@ -9,7 +9,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, unique, dasherize, filter, find, keys, map, Str} = require \prelude-ls
+{concat-map, dasherize, difference, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
 request = require \request
 vm = require \vm
 
@@ -98,8 +98,7 @@ get-query-by-id = (db, query-id, callback) !->
     (err, results) <- db.collection \queries .aggregate do 
         [
             {
-                $match: 
-                    query-id: parse-int query-id
+                $match: {query-id}
             }
             {
                 $sort: _id: - 1
@@ -135,7 +134,7 @@ app = express!
     ..use (req, res, next)->
 
         # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id
+        user-id = req?.query?.user-id or (if config.authentication.strategy.name == \none then 1 else null)
         req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         # get the user object from the session & store it in the request
@@ -150,12 +149,11 @@ app = express!
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
 # github passport strategy
-do ->
-    return
+if config.authentication.strategy.name == \github
     passport.use new github-strategy do 
         {
-            clientID: config.github.client-id
-            client-secret: config.github.client-secret
+            clientID: config.authentication.strategy.options.client-id
+            client-secret: config.authentication.strategy.options.client-secret
         }
         (accessToken, refreshToken, profile, done) ->
 
@@ -172,22 +170,22 @@ do ->
                 url: organizations-url
             return die error if !!err
 
-            organization-member = (JSON.parse body) |> find (.login == config.organization-name)
+            organization-member = (JSON.parse body) |> find (.login == config.authentication.strategy.options.organization-name)
             return die "not part of #{config.organization-name}" if !organization-member
 
-            done null, profile
+            done null, profile    
+
+    # redirect user to github
+    app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+
+    # user is redirected to this route by github
+    app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
 
 # convert github data to user-id
 passport.serialize-user (user, done)-> done null, user
 
 # convert user-id to github data
 passport.deserialize-user (obj, done)-> done null, obj
-
-# redirect user to github
-app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
-
-# user is redirected to this route by github
-app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
 
 # login with github page
 app.get \/login, (req, res)-> 
@@ -207,14 +205,86 @@ app.use (req, res, next)->
 # display a list of all queries
 app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 
+# load a new document
+app.get \/branch, (req, res)-> res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
+
+# load an existing document
+app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
+
+    {query-id} = req.params
+
+    err, remote-document-state <- get-query-by-id db, query-id
+    return die res, err if !!err
+
+    if (req.headers.accept.index-of \application/json) > -1
+        res.type \application/json
+        res.send <| JSON.stringify remote-document-state
+
+    else
+        res.render \public/ide.html, {remote-document-state: (remote-document-state or get-default-document-state!)}
+
 # set the status property of the query to false
-app.get "/delete/:queryId", (req, res)->
-    (err, updated) <- db.collection \queries .update {query-id: parse-int req.params.query-id}, {$set: status: false}, {multi: 1}
-    return die res, err if !!err    
-    res.end!
+app.get "/delete/query/:queryId", (req, res)->
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match:
+                    query-id: req.params.query-id
+            }
+        ]
+    return die res, err if !!err
+    
+    (err) <- db.collection \queries .update {query-id: req.params.query-id}, {$set: {status: false}}
+    return die res err if !!err
+
+    (err, queries-updated) <- db.collection \queries .update {parent-id: req.params.query-id}, {$set: {parent-id: results.0.parent-id}}, {multi:true}
+    return die res err if !!err    
+
+    res.end results.0.parent-id
+
+# 
+app.get "/delete/branch/:branchId", (req, res)->
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: 
+                    branch-id: req.params.branch-id
+            }
+            {
+                $project:
+                    query-id: 1
+                    parent-id: 1
+            }
+        ]
+    return die res, err if !!err
+    
+    parent-id = difference do
+        results |> map (.parent-id)
+        results |> map (.query-id)
+
+    # set the status to all queries in the branch to false i.e delete 'em all
+    (err) <- db.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
+    return die res, err if !!err
+
+    # reconnect the children to the parent of the branch
+    criterion =
+        $and: [
+            {
+                branch-id: $ne: req.params.branch-id
+            }
+            {
+                parent-id: $in: results |> map (.query-id)
+            }
+        ]
+    (err, queries-updated) <- db.collection \queries .update criterion, {$set: {parent-id: parent-id.0}}, {multi:true}
+    return die res, err if !!err
+
+    res.end parent-id.0
 
 # transpile livescript, execute the mongo aggregate query and return the results
-app.post \/execute, (req, res)->    
+app.post \/execute, (req, res)->
 
     {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
 
@@ -263,25 +333,26 @@ app.get \/list, (req, res)->
     (err, results) <- db.collection \queries .aggregate do
         [
             {
+                $sort: _id: 1
+            }
+            {
+                $group:
+                    _id: "$branchId"
+                    query-name: $last: "$queryName"
+                    query-id: $last: "$queryId"
+                    creation-time: $first: "$creationTime"
+                    modification-time: $last: "$creationTime"
+                    status: $last: "$status"
+            }
+            {
                 $match: 
                     query-name: {$regex: ".*#{search-string}.*", $options: \i}
             }
             {
-                $sort:
-                    _id: 1
-            }
-            {
-                $group:
-                    _id: \$queryId
-                    creation-time: $first: \$creationTime
-                    modification-time: $last: \$creationTime
-                    query-name: $last: \$queryName
-                    status: $last: \$status
-            }
-            {
                 $project: 
                     _id: 0
-                    query-id: "$_id"
+                    branch-id: "$_id"
+                    query-id: "$queryId"
                     query-name: 1
                     creation-time: 1
                     modification-time: 1
@@ -348,28 +419,87 @@ app.post \/multi-query, (req, res) ->
     # res.type \application/json
     res.end <| JSON.stringify query-res, null, 4
     
-# load a new document
-app.get \/query, (req, res)-> res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
-
-# load an existing document
-app.get "/query/:queryId(\\d+)", (req, res)->
-
-    {query-id} = req.params
-
-    err, remote-document-state <- get-query-by-id db, query-id
-    if (req.headers.accept.index-of \application/json) > -1
-        res.type \application/json
-        res.send <| JSON.stringify remote-document-state
-    else
-        res.render \public/ide.html, {remote-document-state: (remote-document-state or get-default-document-state!)} 
-
 # save the code to mongodb
 app.post \/save, (req, res)->
 
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match:
+                    branch-id: req.body.branch-id
+            }
+            {
+                $project:
+                    query-id: 1
+                    parent-id: 1
+            }
+            {
+                $sort:
+                    _id: -1
+            }            
+        ]
+    return die res, err.to-string! if !!err
+
+    if !!results?.0 and results.0.query-id != req.body.parent-id
+
+        index-of-parent-query = results |> find-index (.query-id == req.body.parent-id)
+
+        queries-in-between = [0 til results.length] 
+            |> map -> [it, results[it].query-id]
+            |> filter ([index])-> index < index-of-parent-query
+            |> map (.1)
+
+        return die res, JSON.stringify {queries-in-between}
+    
     (err, records) <- db.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, status: true}, {w: 1}
     return die res, err if !!err
 
-    res.end JSON.stringify [null, records.0]
+    res.end JSON.stringify records.0
+
+# 
+app.get "/queries/tree/:queryId", (req, res)->
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match:
+                    query-id: req.params.query-id
+                    status: true
+            }
+            {
+                $project:
+                    tree-id: 1
+            }
+        ]        
+    return die res, err if !!err
+    return die res, "unable to find query #{req.params.query-id}" if results.length == 0
+
+    (err, results) <- db.collection \queries .aggregate do 
+        [
+            {
+                $match:
+                    tree-id: results.0.tree-id
+                    status: true
+            }
+            {
+                $sort: _id: 1
+            }
+            {
+                $project:
+                    parent-id: 1
+                    branch-id: 1
+                    query-id: 1
+                    query-name: 1
+                    creation-time: 1
+                    selected: $eq: [\$queryId, req.params.query-id]
+            }
+        ]
+
+    return die res, err if !!err
+    res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
+
+# plot tree
+app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}
 
 app.listen config.port
 console.log "listening on port #{config.port}"

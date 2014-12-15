@@ -1,0 +1,60 @@
+body
+    font-family: helvetica
+    margin: 0px
+    padding: 0px
+
+.tooltip    
+    position: absolute    
+    white-space: nowrap
+    
+    &.above .container
+        margin: 0px 0px 32px 0px
+
+    .container
+        background: white
+        border: 1px solid #ccc
+        border-radius: 4px    
+        margin: 32px 0px 0px 0px
+        padding: 10px
+        .rows            
+            > div
+                margin-bottom: 12px
+                span
+                    &:first-child           
+                        display: inline-block                
+                        min-width: 55px
+                        text-align: right
+                        &:after
+                            content: ":"
+                    &:last-child
+                        font-weight: bold
+                        margin-left: 4px
+        .controls
+            &:after
+                clear: both
+                content: ""
+                display: block
+
+            button
+                background: white
+                border: 1px solid #ccc
+                border-bottom: 2px solid rgba(0,0,0,0.3)
+                border-radius: 4px
+                cursor: pointer
+                float: right
+                font-size: 14px
+                outline: none
+                padding: 8px
+                &:not(:first-child)
+                    margin-right: 8px
+
+path
+    fill: none
+    stroke-width: 1px
+
+    &.highlight
+        stroke-width: 3px
+
+circle
+    cursor: pointer    
+    stroke-width: 1px
