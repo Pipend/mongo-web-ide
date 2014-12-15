@@ -254,6 +254,14 @@ get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:d
                                     branch-id: encoded-time
                                     parent-id: get-parent-query-id resolution
                                 }
+
+                            else if resolution == \reset
+
+                                # option #3: delete local storage and reset to history.state
+                                return if !confirm "Are you sure you want to reset your changes?"
+                                client-storage.delete-document-state query-id
+                                update-dom-with-document-state history.state
+
                             
                     conflict-dialog-container
 

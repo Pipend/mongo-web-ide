@@ -290,7 +290,7 @@ app.get "/delete/branch/:branchId", (req, res)->
         results |> map (.parent-id)
         results |> map (.query-id)
 
-    # set the status to all queries in the branch to false i.e delete 'em all
+    # set the status of all queries in the branch to false i.e delete 'em all
     (err) <- db.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
     return die res, err if !!err
 
@@ -522,9 +522,9 @@ app.get "/queries/tree/:queryId", (req, res)->
 app.get "/rest/:layer/:cache/:queryId", (req, res)->
     
     cache = match req.params.cache
-    | \- => false
     | \false => false
     | \true => true
+    | otherwise => false
 
     (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query-by-id db, req.params.query-id
     return die res, err if !!err

@@ -106,6 +106,8 @@ draw-commit-tree = (element, width, height, queries, tooltip-keys, tooltip-actio
 # on DOM ready
 <- $
 
+die = (err)-> document.body.inner-HTML = "error: #{err}"
+
 draw = (current-query-id, queries)->
 
     draw-commit-tree do 
@@ -120,7 +122,8 @@ draw = (current-query-id, queries)->
                 on-click: (query-to-delete)->
                     return if !confirm "Are you sure you want to delete this query"
                     err, parent-query-id <- d3.text "/delete/query/#{query-to-delete.query-id}"
-                    return console.log err if !!err
+                    return die err if !!err
+                    return die "parent-query-id is undefined" if parent-query-id.length == 0
                     render false, if current-query-id == query-to-delete.query-id then parent-query-id else current-query-id
             }
             {
@@ -128,7 +131,8 @@ draw = (current-query-id, queries)->
                 on-click: ({branch-id})->
                     return if !confirm "Are you sure you want to delete this branch"
                     (err, parent-query-id) <- d3.text "/delete/branch/#{branch-id}"
-                    return console.log err if !!err                    
+                    return die err if !!err
+                    return die "parent-query-id is undefined" if parent-query-id.length == 0
                     render false, if !!(queries |> find (query)-> query.branch-id == branch-id and query.query-id == current-query-id) then parent-query-id else current-query-id
             }
             {
@@ -147,7 +151,7 @@ fetch-queries = do ->
 
 render = (use-cache, query-id)->
     err, queries <- fetch-queries use-cache, query-id
-    return console.log 'err', err if !!err
+    return die err if !!err
     history.replace-state {query-id}, "#{query-id}", "/tree/#{query-id}"
     draw query-id, queries
 
