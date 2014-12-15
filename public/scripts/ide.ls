@@ -648,7 +648,6 @@ $ ->
         update-dom-with-document-state document-state
         update-remote-state-button document-state, window.remote-document-states
 
-
     # # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = ->
         dirty-states = window.remote-document-states

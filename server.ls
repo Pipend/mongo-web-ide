@@ -1,4 +1,5 @@
 async = require \async
+base62 = require \base62
 config = require \./config
 express = require \express
 session = require \express-session
@@ -51,7 +52,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
     return callback err, null if !!err
 
     # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query, allowDiskUse: true
+    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use: true}
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
@@ -308,6 +309,7 @@ app.get \/keywords/queryContext, (req, res) ->
     res.set \content-type, \application/json
     res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
+#
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
     err, results <- execute-json-query req.params.server-name, req.params.database, req.params.collection,
         [
@@ -454,6 +456,11 @@ app.post \/save, (req, res)->
     return die res, err if !!err
 
     res.end JSON.stringify records.0
+
+# deprecated route
+app.get \/query/:queryId, (req, res)->
+  encoded-id = base62.encode req.params.query-id
+  res.redirect "/branch/#{encoded-id}/#{encoded-id}"
 
 # 
 app.get "/queries/tree/:queryId", (req, res)->
