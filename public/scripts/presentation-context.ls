@@ -3,23 +3,30 @@
 require \prelude-ls
 {concat-map, map, unique, sort} = require \prelude-ls
 
-module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
+module.exports.get-presentation-context = (pre, svg, chart)->
 
     # all functions defined here are accessibly by the presentation code
     {
 
         json: (result)-> 
-            show-output-tag \pre
-            $ \pre .html JSON.stringify result, null, 4
+
+            # display the pre tag
+            $ pre .show!
+            $ svg .hide!
+
+            # update the contents of the pre tag
+            $ pre .html JSON.stringify result, null, 4
 
         table: (result)-> 
 
-            show-output-tag \pre
+            # display the pre tag
+            $ pre .show!
+            $ svg .hide!
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
             #todo: don't do this if the table is already present
-            $ \pre .html ''
+            $ pre .html ''
             $table = d3.select \pre .append \table
             $table.append \thead .append \tr
             $table.append \tbody
@@ -50,7 +57,10 @@ module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
                 .x (.label)
                 .y (.value)
 
-            plot-chart chart, result
+            # display the svg
+            $ pre .hide!
+            $ svg .show!
+            d3.select \svg .datum result .call chart
 
         plot-timeseries: (result)->
 
@@ -61,7 +71,10 @@ module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
                 .y (.1)
             chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
             
-            plot-chart chart, result
+            # display the svg
+            $ pre .hide!
+            $ svg .show!
+            d3.select \svg .datum result .call chart
             
         plot-stacked-area: (result, {y-axis-format = (d3.format ',')})->
 
@@ -82,8 +95,11 @@ module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
             chart
                 ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
                 ..y-axis.tick-format y-axis-format
-                
-            plot-chart chart, result
+            
+            # display the svg
+            $ pre .hide!
+            $ svg .show!
+            d3.select \svg .datum result .call chart
 
         plot-scatter: (result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')}) ->
 
@@ -104,5 +120,15 @@ module.exports.get-presentation-context = (chart, plot-chart, show-output-tag)->
                 ..x-axis.tick-format x-axis-format
                 ..y-axis.tick-format y-axis-format
 
-            plot-chart chart, result
+            # display the svg
+            $ pre .hide!
+            $ svg .show!
+            d3.select \svg .datum result .call chart
+
     }
+
+
+
+
+
+

@@ -11,6 +11,7 @@ moment = require \moment
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
 {concat-map, dasherize, difference, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
+{get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
 
@@ -35,6 +36,23 @@ compile-and-execute-livescript = (livescript-code, context)->
 
     [null, result]
 
+# filters out empty lines and lines that begin with comment
+# also encloses the query objects in a collection
+convert-query-to-valid-livescript = (query)->
+
+    lines = query.split (new RegExp "\\r|\\n")
+        |> filter -> 
+            line = it.trim!
+            !(line.length == 0 || line.0 == \#)
+
+    lines = [0 til lines.length] 
+        |> map (i)-> 
+            line = lines[i]
+            line = (if i > 0 then "},{" else "") + line if line.0 == \$
+            line
+
+    "[{#{lines.join '\n'}}]"
+
 die = (res, err)->
     res.status 500
     res.end err
@@ -58,7 +76,11 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
 
     callback null, result
 
-execute-query = (server-name, database, collection, query, parameters, callback) !->
+execute-query = (server-name, database, collection, query, cache, parameters, callback) !->
+
+    # return cached result if any
+    key = md5 query    
+    return callback null, query-cache[key] if cache and !!query-cache[key]    
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
@@ -69,7 +91,10 @@ execute-query = (server-name, database, collection, query, parameters, callback)
     [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
     return callback err, null if !!err
 
-    execute-json-query server-name, database, collection, query, callback
+    err, result <- execute-json-query server-name, database, collection, query
+    return callback err, null if !!err
+
+    callback null, query-cache[key] = result
 
 get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
@@ -286,23 +311,11 @@ app.get "/delete/branch/:branchId", (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
 
-    {cache, server-name, database, collection, query, parameters = "{}"} = req.body    
+    {server-name, database, collection, query, cache, parameters = "{}"} = req.body    
 
-    # return cached result if any
-    key = md5 query    
-    return res.end query-cache[key] if cache and !!query-cache[key]
-
-    start-time = new Date!.get-time!
-
-    err, result <-  execute-query server-name, database, collection, query, parameters
+    err, result <-  execute-query server-name, database, collection, query, cache, parameters
     return die res, err.to-string! if !!err
-
-    execution-time =  (new Date!.get-time! - start-time) / 1000
-
-    console.log "#{execution-time}s"
-
-    # cache and return the response
-    res.end (query-cache[key] = JSON.stringify result, null, 4)
+    res.end JSON.stringify result, null, 4
 
 # extract keywords from the latest record (for auto-completion)
 app.get \/keywords/queryContext, (req, res) ->
@@ -503,6 +516,32 @@ app.get "/queries/tree/:queryId", (req, res)->
 
     return die res, err if !!err
     res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
+
+#
+app.get "/rest/:layer/:cache/:queryId", (req, res)->
+    
+    cache = match req.params.cache
+    | \- => false
+    | \false => false
+    | \true => true
+
+    err, {server-name, database, collection, query, transformation, presentation} <- get-query-by-id db, req.params.query-id
+    return die res, err if !!err
+
+    err, result <- execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query
+    return die res, err if !!err
+
+    # return the query result without applying transformation or presentation code
+    return res.end JSON.stringify result if req.params.layer == \-
+
+    # apply transformation
+    [err, transformed-result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result}
+    return die res, err if !!err
+
+    # return the transformed result
+    return res.end JSON.stringify transformed-result if req.params.layer == \transformation
+
+    res.render "public/presentation.html", {transformed-result, presentation}
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}

@@ -129,15 +129,16 @@ execute-query-and-display-results = do ->
         $ \.preloader .hide!
 
         # clear existing result
-        $ \pre .html ""
-        $ \svg .empty!
+        $ ".output > pre" .html ""
+        $ ".output > svg" .empty!
 
         # update the cache indicator
         $ \#cache .parent! .toggle-class "highlight green", cache
 
         display-error = (err)->
-            show-output-tag \pre
-            $ \pre .html err
+            $ ".output > pre" .show!
+            $ ".output > svg" .hide!
+            $ ".output > pre" .html err
 
         # display the new result    
         return display-error "query-editor error #{err}" if !!err
@@ -145,7 +146,7 @@ execute-query-and-display-results = do ->
         [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
         return display-error "transformer error #{err}" if !!err
 
-        [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
+        [err, result] = run-livescript (get-presentation-context ($ ".output > pre" .get 0), ($ ".output > svg" .get 0), chart), result, presentation
         return display-error "presenter error #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
@@ -341,11 +342,6 @@ keywords-from-context = (context)->
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
 
-# DRY function used by presentation-context
-plot-chart = (chart, result)->
-    show-output-tag \svg
-    d3.select \svg .datum result .call chart
-
 # update the ace-editors after there corresponding div elements have been resized
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
 
@@ -397,11 +393,6 @@ set-hash = (obj)->
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0
 
-# toggle between pre (for json & table) and svg (for charts)
-show-output-tag = (tag)->
-    $ \.output .children! .each -> 
-        $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
-
 # a convenience function
 try-get = (value, default-value)-> if !!value then value else default-value
 
@@ -448,7 +439,8 @@ update-remote-state-button = (document-state, remote-document-states)->
 # on dom ready
 $ ->
 
-    show-output-tag \pre
+    $ ".output > pre" .show!
+    $ ".output > svg" .hide!
 
     # setup the initial size
     $ \.editors .width window.inner-width * 0.4
@@ -667,8 +659,8 @@ $ ->
 
     key 'command + p, command + shift + p', (e)-> 
         React.render (query-search {
-            on-query-selected: ({query-id})-> 
-                window.open "/#{query-id}", \_blank
+            on-query-selected: ({branch-id, query-id})-> 
+                window.open "/branch/#{branch-id}/#{query-id}", \_blank
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
         false
