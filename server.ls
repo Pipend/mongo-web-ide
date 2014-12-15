@@ -9,7 +9,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, difference, dasherize, filter, find, find-index, keys, map, Str} = require \prelude-ls
+{concat-map, dasherize, difference, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
 request = require \request
 vm = require \vm
 
@@ -38,16 +38,7 @@ die = (res, err)->
     res.status 500
     res.end err
 
-execute-query = (server-name, database, collection, query, parameters, callback) !->
-
-    # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
-    if \String == typeof! parameters
-        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
-        return callback err, null if !!err
-
-    # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
-    return callback err, null if !!err
+execute-json-query = (server-name, database, collection, query, callback) !-->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
@@ -60,11 +51,24 @@ execute-query = (server-name, database, collection, query, parameters, callback)
     return callback err, null if !!err
 
     # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query
+    err, result <- mongo-client.db database .collection collection .aggregate query, allowDiskUse: true
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
     callback null, result
+
+execute-query = (server-name, database, collection, query, parameters, callback) !->
+
+    # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
+    if \String == typeof! parameters
+        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+        return callback err, null if !!err
+
+    # compile & execute livescript code to get the parameters for aggregation
+    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
+    return callback err, null if !!err
+
+    execute-json-query server-name, database, collection, query, callback
 
 get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
@@ -112,6 +116,7 @@ app = express!
     ..set \views, __dirname + \/
     ..engine \.html, (require \ejs).__express
     ..set 'view engine', \ejs    
+    ..use (require \serve-favicon) __dirname + '/public/images/favicon.png'
     ..use (require \cors)!
     ..use (require \cookie-parser)!
     ..use (req, res, next)->
@@ -299,22 +304,26 @@ app.post \/execute, (req, res)->
     res.end (query-cache[key] = JSON.stringify result, null, 4)
 
 # extract keywords from the latest record (for auto-completion)
-app.get \/keywords/queryContext, (req, res)->
+app.get \/keywords/queryContext, (req, res) ->
+    res.set \content-type, \application/json
     res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
 
-# TODO: implement
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
-    (err, results) <- query-db.collection \events .aggregate do 
+    err, results <- execute-json-query req.params.server-name, req.params.database, req.params.collection,
         [
             {
                 $sort: _id: -1
             }
             {
-                $limit: 1
+                $limit: 10
             }
         ]
     return die err, res if !!err     
-    collection-keywords = get-all-keys-recursively results.0, (k, v)-> typeof v != \function
+    collection-keywords = 
+        results 
+            |> concat-map (-> get-all-keys-recursively it, (k, v)-> typeof v != \function)
+            |> unique
+    res.set \content-type, \application/json
     res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
 # return a list of all queries

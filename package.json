@@ -43,6 +43,7 @@
     "prelude-ls": "^1.1.1",
     "react": "^0.12.1",
     "request": "^2.48.0",
+    "serve-favicon": "^2.1.7",
     "underscore": "^1.7.0",
     "vinyl-source-stream": "^1.0.0",
     "watchify": "^2.1.1"
