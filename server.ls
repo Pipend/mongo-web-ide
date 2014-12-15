@@ -114,7 +114,7 @@ get-query-context = ->
         object-id: ObjectID
         bucketize
         timestamp-to-day: bucketize 86400000
-        day-to-timestamp: (* 86400000)
+        day-to-timestamp: (field) -> $multiply: [field, 86400000]
         today: today!
         parse-date
         to-timestamp
