@@ -279,6 +279,13 @@ get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:d
 
             # non fast-forward case
             if !!remote-document-states.0?.query-id and query-id != remote-document-states.0?.query-id
+
+                # make sure that the head is saved
+                client-head-state = client-storage.get-document-state remote-document-states.0.query-id
+                if !!client-head-state and has-document-changed client-head-state, remote-document-states
+                    return callback "Please save the head query"
+
+                # display conflict resolution dialog
                 resolution <- resolve-conflict [0 til remote-document-states |> find-index (.query-id == query-id)] 
                 if resolution == \new-commit then remote-document-states.0.query-id else query-id
 
