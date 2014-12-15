@@ -215,7 +215,7 @@ get-query-parameters = ->
     try-get query-parameters, ""
 
 # returns noop if the document hasn't changed since the last save
-get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
+get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
 
     # if there are no changes to the document return noop as the save function
     return [false, (callback)-> callback null] if !has-document-changed document-state, remote-document-states
@@ -273,7 +273,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
 
                 history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
                 remote-document-states.unshift document-state
-                client-storage.delete-document-state query-id
+                client-storage.delete-document-state if !!query-id then query-id else local-query-id
                 callback null
                             
 

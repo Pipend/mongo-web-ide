@@ -32,9 +32,8 @@ query-list = React.create-class do
                         $div {class-name: \date}, moment(modification-time).format("ddd, DD MMM YYYY, hh:MM:ss A")
                         $a {class-name: \query-name, href: "/branch/#{branch-id}/#{query-id}"}, query-name
                         $div {class-name: \tags}
-                        $div {class-name: \right},        
-                            $div {class-name: \storage}, (storage |> Str.join " & ")                                                
-                            $div {class-name: 'control fork'}
+                        # $div {class-name: \right},        
+                            # $div {class-name: 'control fork'}
                             
     on-search-string-change: (e)->
         self = @

@@ -128,7 +128,7 @@ app = express!
     ..use (req, res, next)->
 
         # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id or (if config.authenticate then null else 1)
+        user-id = req?.query?.user-id or (if config.authentication.strategy.name == \none then 1 else null)
         req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         # get the user object from the session & store it in the request
@@ -143,42 +143,43 @@ app = express!
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
 # github passport strategy
-passport.use new github-strategy do 
-    {
-        clientID: config.github.client-id
-        client-secret: config.github.client-secret
-    }
-    (accessToken, refreshToken, profile, done) ->
+if config.authentication.strategy.name == \github
+    passport.use new github-strategy do 
+        {
+            clientID: config.authentication.strategy.options.client-id
+            client-secret: config.authentication.strategy.options.client-secret
+        }
+        (accessToken, refreshToken, profile, done) ->
 
-        die = (err)->
-            console.log "github authentication error: #{err}"
-            return done err, null 
+            die = (err)->
+                console.log "github authentication error: #{err}"
+                return done err, null 
 
-        organizations-url = profile?._json?.organizations_url
-        return die "organizations url not found" if !organizations-url
+            organizations-url = profile?._json?.organizations_url
+            return die "organizations url not found" if !organizations-url
 
-        (error, response, body) <- request do 
-            headers:
-                'User-Agent': "Mongo Web IDE"
-            url: organizations-url
-        return die error if !!err
+            (error, response, body) <- request do 
+                headers:
+                    'User-Agent': "Mongo Web IDE"
+                url: organizations-url
+            return die error if !!err
 
-        organization-member = (JSON.parse body) |> find (.login == config.organization-name)
-        return die "not part of #{config.organization-name}" if !organization-member
+            organization-member = (JSON.parse body) |> find (.login == config.authentication.strategy.options.organization-name)
+            return die "not part of #{config.organization-name}" if !organization-member
 
-        done null, profile
+            done null, profile    
+
+    # redirect user to github
+    app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+
+    # user is redirected to this route by github
+    app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
 
 # convert github data to user-id
 passport.serialize-user (user, done)-> done null, user
 
 # convert user-id to github data
 passport.deserialize-user (obj, done)-> done null, obj
-
-# redirect user to github
-app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
-
-# user is redirected to this route by github
-app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
 
 # login with github page
 app.get \/login, (req, res)-> 
