@@ -22,9 +22,12 @@ require \LiveScript
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
+{dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
 
 # normal dependencies
+base62 = require \base62
+client-storage = require \./client-storage.ls
+{conflict-dialog} = require \./conflict-dialog.ls
 $ = require \jquery-browserify
 {key} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
@@ -39,7 +42,6 @@ presentation-editor = null
 query-editor = null
 transformation-editor = null
 parameters-editor = null
-page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/query\\/(\\d+)(\\#\\?.*)?"
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -146,13 +148,27 @@ execute-query-and-display-results = do ->
         [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
         return display-error "presenter error #{err}" if !!err
 
-# gets the documetn state from the dom elements
-get-document-state = (query-id)->
-    {
-        query-id
+# if the local state has diverged from remote state, creates a new tree
+# returns the url of the forked query 
+fork = ({query-id, tree-id}:document-state, remote-document-states) ->
+    changed = has-document-changed document-state, remote-document-states
+    encoded-time = base62.encode Date.now!    
+    forked-document-state = get-document-state {
+        local-query-id: encoded-time
+        query-id: if changed then null else query-id
+        branch-id: encoded-time
+        tree-id: if changed then encoded-time else tree-id
+    }
+    forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
+    save-to-disk forked-document-state
+    "/branch/local/#{forked-document-state.query-id}"
+
+# gets the document state from the dom elements
+get-document-state = ({query-id, tree-id, branch-id, parent-id, local-query-id}:identifiers?)->
+    {} <<< (if !!identifiers then {query-id, tree-id, branch-id, parent-id, local-query-id} else {}) <<< {
         query-name: $ \#query-name .val!
         server-name: $ \#server-name .val!
-        database: $ \#database .val!
+        database: $ \#database .val!,
         collection: $ \#collection .val!
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
@@ -174,16 +190,24 @@ get-hash = ->
         |> map (.split \=) 
         |> pairs-to-obj
 
-## gets the query id from the url
-get-query-id = do ->
+# get identifiers from local storage, remote state, null otherwise
+get-identifiers = (url, remote-document-states)->
 
-    result = null
+        # extract from url & local storage using regex (branch/local/local-query-id)
+        [, , local-query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local/([a-zA-Z0-9]+)/?"
+        return {local-query-id} if !!local-query-id
 
-    (url)->
-        return result if !!result
+        # extract from url & local storage using regex (branch/branch-id/query-id)
+        [, , branch-id, query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/([a-zA-Z0-9]+)/([a-zA-Z0-9]+)/?"
+        if !!query-id
+            {query-id, branch-id, parent-id, tree-id}? = client-storage.get-document-state query-id
+            return {query-id, branch-id, parent-id, tree-id} if !!query-id
 
-        [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
-        result := parse-int try-get query-id, new Date!.get-time!
+        # extract from the server response
+        {query-id, branch-id, parent-id, tree-id}? = remote-document-states.0
+        return {query-id, branch-id, parent-id, tree-id} if !!query-id
+
+        null
 
 # gets the query parameters from the url
 get-query-parameters = ->
@@ -191,10 +215,10 @@ get-query-parameters = ->
     try-get query-parameters, ""
 
 # returns noop if the document hasn't changed since the last save
-get-save-function = (document-state)->
+get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
 
     # if there are no changes to the document return noop as the save function
-    return [false, (callback)-> callback! if !!callback] if !has-document-changed document-state
+    return [false, (callback)-> callback null] if !has-document-changed document-state, remote-document-states
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
@@ -202,27 +226,91 @@ get-save-function = (document-state)->
         true
         (callback)->
 
-            # update the local-storage before making the request to recover from unexpected crash
-            save-to-local-storage document-state
+            # resolve the conflict creating a new commit or forking a new branch
+            resolve-conflict = (queries-in-between, get-parent-query-id)->
 
-            (err) <- save-to-server document-state
-            return console.log err if !!err
+                conflict-dialog-container = $ ".conflict-dialog-container" .get 0
+                encoded-time = base62.encode Date.now!
 
-            window.remote-document-state = document-state
-            callback! if !!callback
+                React.render do 
+                    conflict-dialog do
+                        queries: queries-in-between
+                        on-resolved: (resolution)-> 
+
+                            if resolution == \new-commit
+
+                                # option #1: create a new commit & place it at the head
+                                save-and-push-state {} <<< document-state <<< {
+                                    query-id: encoded-time                    
+                                    parent-id: get-parent-query-id resolution
+                                }
+
+                            else if resolution == \fork
+
+                                # option #2: fork a new branch
+                                save-and-push-state {} <<< document-state <<< {
+                                    query-id: encoded-time
+                                    branch-id: encoded-time
+                                    parent-id: get-parent-query-id resolution
+                                }
+                            
+                    conflict-dialog-container
+
+            # save the state, reset local storage and update history
+            save-and-push-state = (document-state)->
+
+                (err) <- save-to-server document-state
+
+                if !!err                    
+
+                    error-json = try-parse-json err
+
+                    if !!error-json?.queries-in-between
+                        resolve-conflict error-json.queries-in-between, (resolution)-> if resolution == \new-commit then error-json.queries-in-between.0 else query-id
+                        return callback null
+
+                    return callback err
+
+                history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
+                remote-document-states.unshift document-state
+                client-storage.delete-document-state if !!query-id then query-id else local-query-id
+                callback null
+                            
+
+            # non fast-forward case
+            if !!remote-document-states.0?.query-id and query-id != remote-document-states.0?.query-id
+
+                # make sure that the head is saved
+                client-head-state = client-storage.get-document-state remote-document-states.0.query-id
+                if !!client-head-state and has-document-changed client-head-state, remote-document-states
+                    return callback "Please save the head query"
+
+                # display conflict resolution dialog
+                resolution <- resolve-conflict [0 til remote-document-states |> find-index (.query-id == query-id)] 
+                if resolution == \new-commit then remote-document-states.0.query-id else query-id
+
+            # fast-forward
+            else
+
+                encoded-time = base62.encode Date.now!
+
+                save-and-push-state {} <<< document-state <<< {
+                    query-id: encoded-time
+                    parent-id: query-id
+                    tree-id: tree-id || encoded-time
+                    branch-id: branch-id || encoded-time
+                }
+                
 
     ]
 
 # compares document-state with remote document state
-has-document-changed = (document-state)->
+has-document-changed = ({query-id}:document-state, remote-document-states)->
 
-    remove-ui-key = ->
-        it 
-            |> obj-to-pairs
-            |> filter ([key, ...]) -> key != \ui
-            |> pairs-to-obj
+    remote-document-state = (remote-document-states |> find (.query-id == query-id)) or remote-document-states.0
 
-    !((remove-ui-key document-state) `is-equal-to-object` (remove-ui-key window.remote-document-state))
+    keys = <[ui queryId branchId parentId localQueryId]>
+    !(omit document-state, keys) `is-equal-to-object` omit remote-document-state, keys
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
@@ -237,16 +325,18 @@ is-equal-to-object = (o1, o2)->
         else
             o1[key] == o2[key]
 
+# returns a new object by omiting keys from the source object
+omit = (obj, keys)->
+    obj 
+        |> obj-to-pairs
+        |> filter ([key, ...]) -> (keys.index-of key) == -1
+        |> pairs-to-obj
+
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->
     context
         |> obj-to-pairs 
         |> map -> dasherize it.0
-
-# tries to load the document state from local-storage on failure returns the remote document state
-load-document-state = (query-id)->
-    state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
-    state <<< {query-id}    
 
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
@@ -263,8 +353,8 @@ resize-editors = -> [query-editor, transformation-editor, presentation-editor] |
 resize-ui = ->
     $ \.output .width window.inner-width - ($ \.editors .width!) - ($ \.resize-handle.vertical .width!)
     $ \.output .height window.inner-height - ($ \.menu .height!)
-    $ "pre, svg" .width ($ \.output .width!)
-    $ "pre, svg" .height ($ \.output .height!)
+    $ ".output pre, .output svg" .width ($ \.output .width!)
+    $ ".output pre, .output svg" .height ($ \.output .height!)
     $ \.resize-handle.vertical .height Math.max ($ \.output .height!), ($ \.editors .height!)
     $ \.preloader 
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
@@ -284,19 +374,17 @@ run-livescript = (context, result, livescript)->
     catch error 
         return [error, null]
 
+#
+save-to-disk = ({query-id, local-query-id}:document-state)->
+    key = query-id || local-query-id
+    throw "unable to save to disk, key not found" if typeof key == \undefined
+    client-storage.save-document-state key, document-state
+
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
-        ..done (response)->
-            [err, document-state] = JSON.parse response
-            return callback err if !!err
-            callback null
+        ..done (response)-> callback null
         ..fail ({response-text})-> callback response-text
-
-# save document with query-id to local storage
-# putting the query-id makes it consistent with the db & makes setting up the history easier
-save-to-local-storage = (document-state)-> 
-    local-storage.set-item document-state.query-id, JSON.stringify document-state
 
 # converts an object to hash query string
 set-hash = (obj)->
@@ -316,6 +404,17 @@ show-output-tag = (tag)->
 
 # a convenience function
 try-get = (value, default-value)-> if !!value then value else default-value
+
+#
+try-parse-json = (json-string)->
+
+    json = null
+
+    try
+        json = JSON.parse json-string
+    catch parse-exception
+
+    json
 
 # update the editors, document.title etc using the document-state (persisted to local-storage and server)
 update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, ui}, update-ui = true)->
@@ -341,9 +440,9 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
 
 # the state button is only visible when there is copy of the query on the server
 # the highlight on the state button indicates the client version differs the server version
-update-remote-state-button = (document-state)->
-    $ \#remote-state .toggle !!window.remote-document-state.query-id
-    $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state)
+update-remote-state-button = (document-state, remote-document-states)->
+    $ \#remote-state .toggle !!remote-document-states.0.query-id
+    $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state, remote-document-states)
 
 # on dom ready
 $ ->
@@ -410,10 +509,18 @@ $ ->
         ace-language-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
         
     # load document & update DOM, editors
-    query-id = get-query-id!
-    document-state = load-document-state query-id
-    history.replace-state document-state, document-state.name, "/query/#{query-id}#{get-query-parameters!}"
-    update-dom-with-document-state document-state
+    load-document-state = (document-state, url-generator)->
+        history.replace-state document-state, document-state.name, (url-generator document-state)
+        update-dom-with-document-state document-state
+
+    {local-query-id, query-id}? = get-identifiers window.location.href, window.remote-document-states
+
+    if !!query-id
+        load-document-state ((client-storage.get-document-state query-id) or ({} <<< window.remote-document-states.0)), ({query-id, branch-id})-> "/branch/#{branch-id}/#{query-id}"
+
+    else 
+        document-state = (client-storage.get-document-state local-query-id) or {} <<< window.remote-document-states.0 <<< {local-query-id: base62.encode Date.now!}
+        load-document-state document-state, ({local-query-id})-> "/branch/local/#{local-query-id}"
 
     # update document title with query-name
     $ \#query-name .on \input, -> document.title = $ @ .val!
@@ -424,83 +531,102 @@ $ ->
         # do not save if we are displaying server side version
         return if ($ \#remote-state .attr \data-state) == \server
 
-        document-state = get-document-state query-id
-        save-to-local-storage document-state
-        update-remote-state-button document-state
+        document-state = get-document-state history.state
+
+        if has-document-changed document-state, window.remote-document-states
+            save-to-disk document-state
+        else
+            client-storage.delete-document-state document-state.query-id
+
+        update-remote-state-button document-state, window.remote-document-states
 
     document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
     on-key-down!
 
     # save to server 
-    on-save = (e, document-state)->
+    save-state = (document-state)->
 
         # do not save if we are displaying server side version
         return if ($ \#remote-state .attr \data-state) == \server
 
-        [,save-function] = get-save-function document-state
+        [, save-function] = get-save-function document-state, window.remote-document-states
 
         # update the difference indicator between client & server code
-        save-function -> update-remote-state-button document-state
+        save-function (err)-> 
+            return alert err if !!err
+            update-remote-state-button history.state, window.remote-document-states
 
         # prevent default behaviour of displaying the save-dialog
         false
 
-    key 'command + s', (e)-> on-save e, get-document-state query-id
-    $ \#save .on \click, (e)-> on-save e, get-document-state query-id
+    key 'command + s', (e)-> save-state get-document-state history.state
+    $ \#save .on \click, (e)-> save-state get-document-state history.state
 
     # execute the query on button click or hot key (command + enter)
-    key 'command + enter', -> execute-query-and-display-results get-document-state query-id
-    $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state query-id
+    key 'command + enter', -> execute-query-and-display-results get-document-state history.state
+    $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state history.state
 
     # fork
     $ \#fork .on \click, ->
-        new-query-id = new Date!.get-time!
-        forked-document-state = get-document-state new-query-id
-        forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
-        local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "/query/#{new-query-id}", \_blank
+        url = fork (get-document-state history.state), window.remote-document-states
+        window.open url, \_blank
 
-    # info
+    # # info
     $ \#info .on \click, -> $ \.details .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
 
-    # delete
-    $ \#delete .on \click, -> 
-        return if !confirm "Are you sure you want to delete this query?"
-        <- $.get "/delete/#{query-id}"
-        local-storage.remove-item "#{query-id}"
-        window.onbeforeunload = $.noop!
-        window.location.href = "list?_=#{new Date!.get-time!}"
+    # # delete
+    # $ \#delete .on \click, -> 
+    #     return if !confirm "Are you sure you want to delete this query?"
+    #     {query-id} = history.state
+    #     <- $.get "/delete/#{query-id}"
+    #     local-storage.remove-item "#{query-id}"
+    #     window.onbeforeunload = $.noop!
+    #     window.location.href = "list?_=#{new Date!.get-time!}"
 
-    # switch between client & server code
+    # # switch between client & server code
     $ \#remote-state .on \click, ->
         
         if ($ @ .attr \data-state) == \client
-            save-to-local-storage get-document-state!
             $ @ .attr \data-state, \server
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
-            update-dom-with-document-state window.remote-document-state, false
+            save-to-disk get-document-state history.state
+            update-dom-with-document-state do 
+                window.remote-document-states |> find (.query-id == history.state.query-id)
+                false
             
         else
             $ @ .attr \data-state, \client
-            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
-            update-dom-with-document-state (JSON.parse local-storage.get-item query-id), false
+            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false            
+            update-dom-with-document-state do
+                client-storage.get-document-state history.state.query-id
+                false
 
     $ \#multi-query .on \change, -> 
-        console.log \state, get-document-state!
-        update-remote-state-button get-document-state!
+        update-remote-state-button get-document-state history.state, window.remote-document-states
 
-    # reset local document state to match remote version
+    # # reset local document state to match remote version
     $ \#reset-to-server .on \click, ->
         return if !confirm "Are you sure you want to reset query to match server version?"
-        update-dom-with-document-state window.remote-document-state
-        update-remote-state-button window.remote-document-state
+        client-storage.delete-document-state history.state.query-id
+        document-state = window.remote-document-states |> find (.query-id == history.state.query-id)
+        update-dom-with-document-state document-state
+        update-remote-state-button document-state, window.remote-document-states
 
-    # prevent loss of work, does not guarantee the completion of async functions    
-    window.onbeforeunload = -> 
-        save-to-local-storage get-document-state query-id
-        [should-save] = get-save-function get-document-state query-id
-        return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
+
+    # # prevent loss of work, does not guarantee the completion of async functions    
+    window.onbeforeunload = ->
+        dirty-states = window.remote-document-states
+            |> filter ({query-id})->
+                document-state = client-storage.get-document-state query-id
+                !!document-state and has-document-changed document-state, window.remote-document-states
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if dirty-states.length > 0
+
+    window.onpopstate = (event)->
+        local-state = client-storage.get-document-state event.state.query-id
+        document-state = if !!local-state then local-state else event.state
+        update-dom-with-document-state document-state
+        update-remote-state-button document-state, window.remote-document-states
 
     # query search
     $query-search-container = $ \.query-search-container .get 0
@@ -514,38 +640,6 @@ $ ->
         false
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
 
 
