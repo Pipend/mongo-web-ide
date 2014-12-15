@@ -526,8 +526,9 @@ app.get "/rest/:layer/:cache/:queryId", (req, res)->
     | \false => false
     | \true => true
 
-    err, {server-name, database, collection, query, transformation, presentation} <- get-query-by-id db, req.params.query-id
+    (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query-by-id db, req.params.query-id
     return die res, err if !!err
+    return die res, "unable to find query: #{req.params.query-id}" if query == null
 
     err, result <- execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query
     return die res, err if !!err
