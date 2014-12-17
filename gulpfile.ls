@@ -58,7 +58,7 @@ watch-entries = (entries, callback)->
 gulp.task \compilation, ->
     gulp.src 'public/styles/*.styl'
     .pipe stylus!
-    .pipe gulp.dest 'public/styles/'    
+    .pipe gulp.dest 'public/styles/'
 
 gulp.task \watch, ->
 

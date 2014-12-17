@@ -55,7 +55,7 @@ convert-query-to-valid-livescript = (query)->
 
 die = (res, err)->
     res.status 500
-    res.end err
+    res.end err.to-string!
 
 execute-json-query = (server-name, database, collection, query, callback) !-->
 
@@ -105,6 +105,21 @@ get-all-keys-recursively = (object, filter-function)->
 get-default-document-state = -> 
     {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
 
+get-latest-query-in-branch = (db, branch-id, callback) !-->
+
+    err, results <- db.collection \queries .aggregate do 
+        [
+            {
+                $match: {branch-id}
+            }
+            {
+                $sort: _id: -1
+            }
+        ]
+    return callback err, null if !!err
+    return callback "unable to find any query in branch: #{branch-id}", null if typeof results == \undefined || typeof results?.0 == \undefined
+    callback null, results.0
+
 get-query-context = ->
     bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
     parse-date = (s) -> new Date s
@@ -120,7 +135,7 @@ get-query-context = ->
         to-timestamp
     }
 
-get-query-by-id = (db, query-id, callback) !->
+get-query-by-id = (db, query-id, callback) !-->
     (err, results) <- db.collection \queries .aggregate do 
         [
             {
@@ -476,7 +491,7 @@ app.get \/query/:queryId, (req, res)->
   encoded-id = base62.encode req.params.query-id
   res.redirect "/branch/#{encoded-id}/#{encoded-id}"
 
-# 
+# returns all the queries that are in the same tree as that of req.params.query-id
 app.get "/queries/tree/:queryId", (req, res)->
 
     (err, results) <- db.collection \queries .aggregate do 
@@ -518,15 +533,22 @@ app.get "/queries/tree/:queryId", (req, res)->
     return die res, err if !!err
     res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
 
-#
-app.get "/rest/:layer/:cache/:queryId", (req, res)->
+# uses query-id if present otherwise executes the latest query in the given branch
+app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     
     cache = match req.params.cache
     | \false => false
     | \true => true
     | otherwise => false
 
-    (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query-by-id db, req.params.query-id
+    {query-id, branch-id} = req.params
+
+    get-query = do ->
+        return (get-query-by-id db, query-id) if !!query-id
+        return (get-latest-query-in-branch db, branch-id) if !!branch-id
+        (callback)-> callback "branch-id & query-id are undefined", null
+
+    (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if query == null
 
