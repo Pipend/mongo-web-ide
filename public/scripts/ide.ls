@@ -610,15 +610,6 @@ $ ->
     $ \#info .on \click, -> $ \.details .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
 
-    # # delete
-    # $ \#delete .on \click, -> 
-    #     return if !confirm "Are you sure you want to delete this query?"
-    #     {query-id} = history.state
-    #     <- $.get "/delete/#{query-id}"
-    #     local-storage.remove-item "#{query-id}"
-    #     window.onbeforeunload = $.noop!
-    #     window.location.href = "list?_=#{new Date!.get-time!}"
-
     # # switch between client & server code
     $ \#remote-state .on \click, ->
         
@@ -654,7 +645,7 @@ $ ->
             |> filter ({query-id})->
                 document-state = client-storage.get-document-state query-id
                 !!document-state and has-document-changed document-state, window.remote-document-states
-        return "You have NOT saved your query. Stop and save if your want to keep your query." if dirty-states.length > 0
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if dirty-states.length > 0 || (typeof window.remote-document-states.0.query-id == \undefined)
 
     window.onpopstate = (event)->
         local-state = client-storage.get-document-state event.state.query-id

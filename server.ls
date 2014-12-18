@@ -110,7 +110,10 @@ get-latest-query-in-branch = (db, branch-id, callback) !-->
     err, results <- db.collection \queries .aggregate do 
         [
             {
-                $match: {branch-id}
+                $match: {
+                    branch-id
+                    status: true
+                }
             }
             {
                 $sort: _id: -1
@@ -254,8 +257,9 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 
     {query-id} = req.params
 
-    err, remote-document-state <- get-query-by-id db, query-id
+    err, {status}:remote-document-state <- get-query-by-id db, query-id
     return die res, err if !!err
+    return die res, "query deleted" if !status
 
     if (req.headers.accept.index-of \application/json) > -1
         res.type \application/json
@@ -367,26 +371,28 @@ app.get \/list, (req, res)->
             }
             {
                 $group:
-                    _id: "$branchId"
-                    query-name: $last: "$queryName"
-                    query-id: $last: "$queryId"
-                    creation-time: $first: "$creationTime"
-                    modification-time: $last: "$creationTime"
-                    status: $last: "$status"
+                    _id: 
+                        branch-id: \$branchId
+                        status: \$status
+                    query-name: $last: \$queryName
+                    query-id: $last: \$queryId
+                    creation-time: $first: \$creationTime
+                    modification-time: $last: \$creationTime
+                    status: $add-to-set: \$status
             }
             {
                 $match: 
-                    query-name: {$regex: ".*#{search-string}.*", $options: \i}
+                    "_id.status": true
+                    query-name: {$regex: ".*#{search-string}.*", $options: \i}                    
             }
             {
                 $project: 
                     _id: 0
-                    branch-id: "$_id"
+                    branch-id: "$_id.branchId"
                     query-id: "$queryId"
                     query-name: 1
                     creation-time: 1
                     modification-time: 1
-                    status: 1
             }
         ]
     return die res, err if !!err
@@ -457,6 +463,7 @@ app.post \/save, (req, res)->
             {
                 $match:
                     branch-id: req.body.branch-id
+                    status: true
             }
             {
                 $project:
@@ -487,9 +494,15 @@ app.post \/save, (req, res)->
     res.end JSON.stringify records.0
 
 # deprecated route
-app.get \/query/:queryId, (req, res)->
+app.get "/query/:queryId(\\d+)", (req, res)->
   encoded-id = base62.encode req.params.query-id
   res.redirect "/branch/#{encoded-id}/#{encoded-id}"
+
+# redirect to the correct url based on query-id
+app.get "/query/:queryId", (req, res)->
+    err, {branch-id} <- get-query-by-id db, req.params.query-id
+    return die res, err if !!err
+    res.redirect "/branch/#{branch-id}/#{req.params.query-id}"
 
 # returns all the queries that are in the same tree as that of req.params.query-id
 app.get "/queries/tree/:queryId", (req, res)->
@@ -573,7 +586,7 @@ app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id:
 app.listen config.port
 console.log "listening on port #{config.port}"
 
-
+console.log base62.decode \oV0y3Oq
 
 
 
