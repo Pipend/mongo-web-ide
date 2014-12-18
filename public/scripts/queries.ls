@@ -1,6 +1,11 @@
 $ = require \jquery-browserify
 d3 = require \d3-browserify
-{map, find, filter, fold, group-by, Obj, obj-to-pairs, pairs-to-obj, sort-by, unique, unique-by, values} = require \prelude-ls
+{dasherize, filter, find, fold, group-by, map, Obj, obj-to-pairs, pairs-to-obj, sort-by, unique, unique-by, values} = require \prelude-ls
+
+queries-in-same-tree = (query-id, callback)->
+    request = $.getJSON "/queries/tree/#{query-id}"
+        ..done (response)-> callback null, response
+        ..error ({response-text}) -> callback response-text, null
 
 search-queries-by-name = (name, callback)->
 
@@ -62,4 +67,4 @@ search-queries-by-name = (name, callback)->
                 
         ..fail ({response-text})-> callback response-text, null
 
-module.exports = {search-queries-by-name}
+module.exports = {search-queries-by-name, queries-in-same-tree}
