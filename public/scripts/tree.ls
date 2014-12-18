@@ -38,24 +38,41 @@ draw = (current-query-id, queries)->
             {
                 label: "Delete Query"
                 on-click: (query-to-delete)->
+
+                    # double confirm delete operation
                     return if !confirm "Are you sure you want to delete this query"
+
                     err, parent-query-id <- d3.text "/delete/query/#{query-to-delete.query-id}"
                     return die err if !!err
-                    return die "parent-query-id is undefined" if parent-query-id.length == 0
-                    new-query-id = if current-query-id == query-to-delete.query-id then parent-query-id else current-query-id
-                    history.replace-state {new-query-id}, "#{new-query-id}", "/tree/#{new-query-id}"
-                    render false, new-query-id
+
+                    # update the route if the deleted query id matches the current query id
+                    if current-query-id == query-to-delete.query-id
+                        return die "parent-query-id is undefined" if parent-query-id.length == 0
+                        history.replace-state {}, "", "/tree/#{parent-query-id}"
+                        render false, parent-query-id
+
+                    else 
+                        render false, current-query-id
+
             }
             {
                 label: "Delete Branch"
                 on-click: ({branch-id})->
+
+                    # double confirm delete operation
                     return if !confirm "Are you sure you want to delete this branch"
-                    (err, parent-query-id) <- d3.text "/delete/branch/#{branch-id}"
+
+                    err, parent-query-id <- d3.text "/delete/branch/#{branch-id}"
                     return die err if !!err
-                    return die "parent-query-id is undefined" if parent-query-id.length == 0
-                    new-query-id = if !!(queries |> find (query)-> query.branch-id == branch-id and query.query-id == current-query-id) then parent-query-id else current-query-id
-                    history.replace-state {new-query-id}, "#{new-query-id}", "/tree/#{new-query-id}"
-                    render false, new-query-id
+
+                    # update the route if the delete branch contained the current query id
+                    if !!(queries |> find (query)-> query.branch-id == branch-id and query.query-id == current-query-id)
+                        return die "parent-query-id is undefined" if parent-query-id.length == 0
+                        history.replace-state {}, "", "/tree/#{parent-query-id}"
+                        render false, parent-query-id
+
+                    else
+                        render false, current-query-id
             }            
         ]
 
