@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -250,7 +250,10 @@ app.use (req, res, next)->
 app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 
 # load a new document
-app.get \/branch, (req, res)-> res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
+<[/branch /branch/local/:localQueryId]> 
+    |> each ->
+        app.get it, (req, res)->
+            res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
 
 # redirect to latest query in the branch
 app.get "/branch/:branchId([a-zA-Z0-9]+)", (req, res)->

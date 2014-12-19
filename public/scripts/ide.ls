@@ -164,7 +164,7 @@ fork = ({query-id, tree-id}:document-state, remote-document-states) ->
     }
     forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
     save-to-disk forked-document-state
-    "/branch/local/#{forked-document-state.query-id}"
+    "/branch/local/#{forked-document-state.local-query-id}"
 
 # gets the document state from the dom elements
 get-document-state = ({query-id, tree-id, branch-id, parent-id, local-query-id}:identifiers?)->
