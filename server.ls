@@ -252,6 +252,14 @@ app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 # load a new document
 app.get \/branch, (req, res)-> res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
 
+# redirect to latest query in the branch
+app.get "/branch/:branchId([a-zA-Z0-9]+)", (req, res)->
+
+    err, {query-id} <- get-latest-query-in-branch db, req.params.branch-id
+    return die res, err if !!err
+
+    res.redirect "/branch/#{req.params.branchId}/#{query-id}"
+
 # load an existing document
 app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 
@@ -288,7 +296,7 @@ app.get "/delete/query/:queryId", (req, res)->
 
     res.end results.0.parent-id
 
-# 
+# set the status property of all the queries in the branch to false
 app.get "/delete/branch/:branchId", (req, res)->
 
     (err, results) <- db.collection \queries .aggregate do 
@@ -585,23 +593,6 @@ app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id:
 
 app.listen config.port
 console.log "listening on port #{config.port}"
-
-console.log base62.decode \oV0y3Oq
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

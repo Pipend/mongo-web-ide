@@ -27,10 +27,12 @@ require \prelude-ls
 # normal dependencies
 base62 = require \base62
 client-storage = require \./client-storage.ls
+{draw-commit-tree} = require \./commit-tree.ls
 {conflict-dialog} = require \./conflict-dialog.ls
 $ = require \jquery-browserify
 {key} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
+{search-queries-by-name, queries-in-same-tree} = require \./queries.ls
 {query-search} = require \./query-search.ls
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
@@ -627,6 +629,35 @@ $ ->
             update-dom-with-document-state do
                 client-storage.get-document-state history.state.query-id
                 false
+
+
+    $ \#commit-tree .on \click, ->
+        err, queries <- queries-in-same-tree history.state.query-id
+        return console.log err if !!err
+
+        draw-commit-tree do
+            (d3.select \.commit-tree)
+            600
+            240
+            queries
+            [
+                {
+                    key: \queryId
+                    name: \Id
+                }
+                {
+                    key: \branchId 
+                    name: \Branch
+                }
+                {
+                    key: \queryName
+                    name: \Name
+                }
+                {
+                    key: \creationTime
+                    name: \Date
+                }
+            ]
 
     $ \#multi-query .on \change, -> 
         update-remote-state-button get-document-state history.state, window.remote-document-states

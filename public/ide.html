@@ -3,7 +3,8 @@
 
     <head>
         <title><%= typeof(remoteDocumentState.queryName) == "undefined" ? "Mongo Web IDE" : remoteDocumentState.queryName %></title>
-        <link rel="stylesheet" href="/public/styles/conflict-dialog.css">
+        <link rel="stylesheet" href="/public/styles/commit-tree.css">
+        <link rel="stylesheet" href="/public/styles/conflict-dialog.css">        
         <link rel="stylesheet" href="/public/styles/ide.css">
         <link rel="stylesheet" href="/public/styles/menu.css">
         <link rel="stylesheet" href="/public/styles/query-search.css">
@@ -43,6 +44,7 @@
                 <label for="multi-query">Multi</label>
             </a>
             <a class="button" id="reset-to-server">Reset</a>
+            <a class="button" id="commit-tree">Tree</a>
             <a class="link" href="/logout">Logout</a>
         </div>
         <div class="details" style="display: none">
@@ -87,7 +89,7 @@
             </div>
         </div>
         <div class="conflict-dialog-container"></div>
-
+        <div class="commit-tree"></div>
     </body>
 
 </html>
