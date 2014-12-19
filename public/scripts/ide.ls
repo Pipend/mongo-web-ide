@@ -157,18 +157,19 @@ fork = ({query-id, tree-id}:document-state, remote-document-states) ->
     changed = has-document-changed document-state, remote-document-states
     encoded-time = base62.encode Date.now!    
     forked-document-state = get-document-state {
-        local-query-id: encoded-time
-        query-id: if changed then null else query-id
-        branch-id: encoded-time
+        query-id: encoded-time
+        parent-id: if changed then null else query-id
+        branch-id: \local-fork
         tree-id: if changed then encoded-time else tree-id
     }
     forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
-    save-to-disk forked-document-state
-    "/branch/local/#{forked-document-state.local-query-id}"
+    client-storage.save-document-state forked-document-state.query-id, forked-document-state
+    reset-document-sate query-id, remote-document-states
+    "/branch/local/#{forked-document-state.query-id}"
 
 # gets the document state from the dom elements
-get-document-state = ({query-id, tree-id, branch-id, parent-id, local-query-id}:identifiers?)->
-    {} <<< (if !!identifiers then {query-id, tree-id, branch-id, parent-id, local-query-id} else {}) <<< {
+get-document-state = ({query-id, tree-id, branch-id, parent-id}:identifiers?)->
+    {} <<< (if !!identifiers then {query-id, tree-id, branch-id, parent-id} else {}) <<< {
         query-name: $ \#query-name .val!
         server-name: $ \#server-name .val!
         database: $ \#database .val!,
@@ -197,8 +198,8 @@ get-hash = ->
 get-identifiers = (url, remote-document-states)->
 
         # extract from url & local storage using regex (branch/local/local-query-id)
-        [, , local-query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local/([a-zA-Z0-9]+)/?"
-        return {local-query-id} if !!local-query-id
+        [, , query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local/([a-zA-Z0-9]+)/?"
+        return {branch-id: \local, query-id} if !!query-id
 
         # extract from url & local storage using regex (branch/branch-id/query-id)
         [, , branch-id, query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/([a-zA-Z0-9]+)/([a-zA-Z0-9]+)/?"
@@ -218,7 +219,7 @@ get-query-parameters = ->
     try-get query-parameters, ""
 
 # returns noop if the document hasn't changed since the last save
-get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
+get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
 
     # if there are no changes to the document return noop as the save function
     return [false, (callback)-> callback null] if !has-document-changed document-state, remote-document-states
@@ -284,7 +285,7 @@ get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:d
 
                 history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
                 remote-document-states.unshift document-state
-                client-storage.delete-document-state if !!query-id then query-id else local-query-id
+                client-storage.delete-document-state query-id
                 callback null
                             
 
@@ -305,11 +306,16 @@ get-save-function = ({local-query-id, query-id, branch-id, tree-id, parent-id}:d
 
                 encoded-time = base62.encode Date.now!
 
+                new-parent-id = match branch-id
+                | \local => null
+                | \local-fork => parent-id
+                | otherwise => query-id
+
                 save-and-push-state {} <<< document-state <<< {
                     query-id: encoded-time
-                    parent-id: query-id
-                    tree-id: tree-id || encoded-time
-                    branch-id: branch-id || encoded-time
+                    parent-id: new-parent-id
+                    branch-id: if (branch-id.index-of \local) == 0 then encoded-time else branch-id
+                    tree-id: tree-id || encoded-time                    
                 }
                 
 
@@ -352,6 +358,13 @@ keywords-from-context = (context)->
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
 
+#
+reset-document-sate = (query-id, remote-document-states)->
+    client-storage.delete-document-state query-id
+    document-state = remote-document-states |> find (.query-id == query-id)
+    update-dom-with-document-state document-state
+    update-remote-state-button document-state, remote-document-states
+
 # update the ace-editors after there corresponding div elements have been resized
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
 
@@ -379,12 +392,6 @@ run-livescript = (context, result, livescript)->
         return [null, eval compile livescript, {bare: true}]
     catch error 
         return [error, null]
-
-# uses query-id or local-query-id property as the local-storage key to save the document-state
-save-to-disk = ({query-id, local-query-id}:document-state)->
-    key = query-id || local-query-id
-    throw "unable to save to disk, key not found" if typeof key == \undefined
-    client-storage.save-document-state key, document-state
 
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
@@ -492,18 +499,18 @@ $ ->
     parameters-editor := create-livescript-editor \parameters-editor
 
     # load document & update DOM, editors
-    load-document-state = (document-state, url-generator)->
-        history.replace-state document-state, document-state.name, (url-generator document-state)
-        update-dom-with-document-state document-state
+    {query-id}? = get-identifiers window.location.href, window.remote-document-states
 
-    {local-query-id, query-id}? = get-identifiers window.location.href, window.remote-document-states
+    document-state = {}
 
     if !!query-id
-        load-document-state ((client-storage.get-document-state query-id) or ({} <<< window.remote-document-states.0)), ({query-id, branch-id})-> "/branch/#{branch-id}/#{query-id}"
-
+        document-state = (client-storage.get-document-state query-id) or {} <<< window.remote-document-states.0
+        
     else 
-        document-state = (client-storage.get-document-state local-query-id) or {} <<< window.remote-document-states.0 <<< {local-query-id: base62.encode Date.now!}
-        load-document-state document-state, ({local-query-id})-> "/branch/local/#{local-query-id}"
+        document-state = {} <<< window.remote-document-states.0 <<< {branch-id: \local, query-id: base62.encode Date.now!}            
+
+    history.replace-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
+    update-dom-with-document-state document-state
 
     # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
     do ->
@@ -571,7 +578,8 @@ $ ->
         document-state = get-document-state history.state
 
         if has-document-changed document-state, window.remote-document-states
-            save-to-disk document-state
+            client-storage.save-document-state document-state.query-id, document-state
+
         else
             client-storage.delete-document-state document-state.query-id
 
@@ -618,7 +626,8 @@ $ ->
         if ($ @ .attr \data-state) == \client
             $ @ .attr \data-state, \server
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
-            save-to-disk get-document-state history.state
+            document-state = get-document-state history.state
+            client-storage.save-document-state document-state.query-id, document-state
             update-dom-with-document-state do 
                 window.remote-document-states |> find (.query-id == history.state.query-id)
                 false
@@ -665,10 +674,7 @@ $ ->
     # # reset local document state to match remote version
     $ \#reset-to-server .on \click, ->
         return if !confirm "Are you sure you want to reset query to match server version?"
-        client-storage.delete-document-state history.state.query-id
-        document-state = window.remote-document-states |> find (.query-id == history.state.query-id)
-        update-dom-with-document-state document-state
-        update-remote-state-button document-state, window.remote-document-states
+        reset-document-sate history.state.query-id, window.remote-document-states
 
     # # prevent loss of work, does not guarantee the completion of async functions    
     window.onbeforeunload = ->
