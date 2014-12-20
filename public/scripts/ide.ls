@@ -201,6 +201,10 @@ get-identifiers = (url, remote-document-states)->
         [, , query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local/([a-zA-Z0-9]+)/?"
         return {branch-id: \local, query-id} if !!query-id
 
+        # extract from url & local storage using regex (branch/local/local-query-id)
+        [, , query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local-fork/([a-zA-Z0-9]+)/?"
+        return {branch-id: \local-fork, query-id} if !!query-id
+
         # extract from url & local storage using regex (branch/branch-id/query-id)
         [, , branch-id, query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/([a-zA-Z0-9]+)/([a-zA-Z0-9]+)/?"
         if !!query-id
@@ -306,6 +310,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
 
                 encoded-time = base62.encode Date.now!
 
+                # the parent id of forked queries is computed at the time of there creation
                 new-parent-id = match branch-id
                 | \local => null
                 | \local-fork => parent-id

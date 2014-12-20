@@ -250,7 +250,7 @@ app.use (req, res, next)->
 app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 
 # load a new document
-<[/branch /branch/local/:localQueryId]> 
+<[/branch /branch/local/:localQueryId /branch/local-fork/:localQueryId]>
     |> each ->
         app.get it, (req, res)->
             res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
