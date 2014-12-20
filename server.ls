@@ -70,7 +70,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
     return callback err, null if !!err
 
     # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use:true}
+    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use: true}
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
@@ -575,7 +575,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if query == null
-
+ 
     err, result <- execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query
     return die res, err if !!err
 
@@ -589,7 +589,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     # return the transformed result
     return res.end JSON.stringify transformed-result if req.params.layer == \transformation
 
-    res.render "public/presentation.html", {transformed-result, presentation}
+    res.render "public/presentation.html", {transformed-result, presentation: presentation.replace /\n/g, "\\n"}
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}
