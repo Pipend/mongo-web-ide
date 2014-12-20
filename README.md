@@ -14,6 +14,7 @@ config =
   env: \local
 
   all:
+    allow-disk-use: true
     authentication:
       strategy:
         name: \github
