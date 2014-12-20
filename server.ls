@@ -70,7 +70,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
     return callback err, null if !!err
 
     # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use: true}
+    err, result <- mongo-client.db database .collection collection .aggregate query#, {allow-disk-use: true}
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
