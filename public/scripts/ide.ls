@@ -158,9 +158,9 @@ fork = ({query-id, tree-id}:document-state, remote-document-states) ->
     encoded-time = base62.encode Date.now!    
     forked-document-state = get-document-state {
         query-id: encoded-time
-        parent-id: if changed then null else query-id
+        parent-id: query-id
         branch-id: \local-fork
-        tree-id: if changed then encoded-time else tree-id
+        tree-id
     }
     forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
     client-storage.save-document-state forked-document-state.query-id, forked-document-state

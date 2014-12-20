@@ -3,7 +3,7 @@
 		<link rel="stylesheet" href="/node_modules/nvd3/nv.d3.css"/>
 		<link rel="stylesheet" href="/public/styles/presentation.css">		
 		<script type="text/javascript">
-			window.presentation = "<%= presentation %>"
+			window.presentation = "<%- presentation %>"
 			window.transformedResult = <%- JSON.stringify(transformedResult) %>
 		</script>
 		<script type="text/javascript" src="/public/scripts/presentation.js"></script>
