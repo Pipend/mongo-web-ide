@@ -79,7 +79,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
 execute-query = (server-name, database, collection, query, cache, parameters, callback) !->
 
     # return cached result if any
-    key = md5 query    
+    key = md5 (query + "\n" + JSON.stringify parameters)    
     return callback null, query-cache[key] if cache and !!query-cache[key]    
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
@@ -441,13 +441,13 @@ app.post \/multi-query, (req, res) ->
         err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
         return callback err if !!err
         query := convert-query-to-valid-livescript query
-        err, result <- execute-query server-name, database, collection, query, parameters
+        err, result <- execute-query server-name, database, collection, query, cache, parameters
         return callback err if !!err
         [err, result] = run-livescript get-transformation-context!, "result = #{JSON.stringify result}\n#transformation"
         return callback err if !!err
         callback null, result
 
-    {query} = req.body
+    {query, cache, parameters = "{}"} = req.body
     user-code = query
 
     code = """
@@ -458,7 +458,12 @@ app.post \/multi-query, (req, res) ->
 #{user-code |> Str.lines |> map (-> "    " + it) |> Str.unlines}
     """
 
-    [err, result] = run-livescript get-query-context!, code
+    [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+    return die err if !!err
+
+    #[err, result] = run-livescript (get-query-context! <<< JSON.parse parameters), code
+
+    [err, result] = compile-and-execute-livescript code, get-query-context! <<< (require \prelude-ls) <<< parameters <<< {run-query}
     return die res, err.to-string! if !!err
     err, query-res <- result!
     return die res, err.to-string! if !!err
