@@ -20,11 +20,15 @@ chart = null
 
 # compiles & executes livescript
 run-livescript = (context, result, livescript)-> 
-    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
-    try 
-        return [null, eval compile livescript, {bare: true}]
+    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript           
+    try
+        javascript = compile livescript, {bare: true}
+        return [null, eval javascript]
     catch error 
         return [error, null]
+        
 <- $
-
-run-livescript (get-presentation-context ($ \pre .get 0), ($ \svg .get 0), chart), window.transformed-result, window.presentation
+presentation = ($ \#presentation .html!)
+presentation .= replace /\t/g, " "
+[error] = run-livescript (get-presentation-context ($ \pre .get 0), ($ \svg .get 0), chart), window.transformed-result, presentation
+console.log error if !!error

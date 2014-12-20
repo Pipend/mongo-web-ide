@@ -558,12 +558,12 @@ app.get "/queries/tree/:queryId", (req, res)->
     res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
 
 # uses query-id if present otherwise executes the latest query in the given branch
-app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
+app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->    
     
     cache = match req.params.cache
     | \false => false
     | \true => true
-    | otherwise => false
+    | otherwise => false    
 
     {query-id, branch-id} = req.params
 
@@ -589,7 +589,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     # return the transformed result
     return res.end JSON.stringify transformed-result if req.params.layer == \transformation
 
-    res.render "public/presentation.html", {transformed-result, presentation: presentation.replace /\n/g, "\\n"}
+    res.render "public/presentation.html", {transformed-result, presentation}
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}
