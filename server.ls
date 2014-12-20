@@ -15,6 +15,12 @@ github-strategy = (require \passport-github).Strategy
 request = require \request
 vm = require \vm
 
+# connect to mongo-db
+(err, db) <- MongoClient.connect config.mongo, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.mongo}"
+
+
 # global variables
 query-cache = {}
 
@@ -78,14 +84,14 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
 
 execute-query = (server-name, database, collection, query, cache, parameters, callback) !->
 
-    # return cached result if any
-    key = md5 (query + "\n" + JSON.stringify parameters)    
-    return callback null, query-cache[key] if cache and !!query-cache[key]    
-
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
         [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
         return callback err, null if !!err
+
+    # return cached result if any
+    key = md5 (query + "\n" + JSON.stringify parameters)    
+    return callback null, query-cache[key] if cache and !!query-cache[key]    
 
     # compile & execute livescript code to get the parameters for aggregation
     [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
@@ -93,6 +99,61 @@ execute-query = (server-name, database, collection, query, cache, parameters, ca
 
     err, result <- execute-json-query server-name, database, collection, query
     return callback err, null if !!err
+
+    callback null, query-cache[key] = result
+
+#TODO: a lot in commmon in execute-query
+execute-multi-query = (query, cache, parameters, callback) !->
+    convert-query-to-valid-livescript = (query)->
+
+        lines = query.split \\n
+            |> filter -> 
+                line = it.trim!
+                !(line.length == 0 || line.0 == \#)
+
+        lines = [0 til lines.length] 
+            |> map (i)-> 
+                line = lines[i]
+                line = (if i > 0 then "},{" else "") + line if line.0 == \$
+                line
+
+        "[{#{lines.join '\n'}}]"
+
+    run-query = (query-id, parameters, callback) -->
+        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
+        return callback err if !!err
+        query := convert-query-to-valid-livescript query
+        err, result <- execute-query server-name, database, collection, query, cache, parameters
+        return callback err if !!err
+        [err, result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result}
+        return callback err if !!err
+        callback null, result
+
+    user-code = query
+
+    code = """
+(callback) ->
+    fail = (err) !-> callback err, null
+    done = (res) !-> callback null, res
+
+#{user-code |> Str.lines |> map (-> "    " + it) |> Str.unlines}
+    """
+
+    # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
+    if \String == typeof! parameters
+        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+        return callback err, null if !!err
+
+    # return cached result if any
+    key = md5 (code + "\n" + JSON.stringify parameters)    
+    return callback null, query-cache[key] if cache and !!query-cache[key]    
+
+
+    [err, result] = compile-and-execute-livescript code, get-query-context! <<< (require \prelude-ls) <<< parameters <<< {run-query}
+    return callback err if !!err
+
+    err, result <- result!
+    return callback err if !!err
 
     callback null, query-cache[key] = result
 
@@ -151,10 +212,6 @@ get-query-by-id = (db, query-id, callback) !-->
     return callback err, null if !!err
     callback null, if !!results and results.length > 0 then results.0 else null
 
-# connect to mongo-db
-(err, db) <- MongoClient.connect config.mongo, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.mongo}"
 
 # create & setup express app
 app = express!
@@ -412,60 +469,9 @@ app.get \/list, (req, res)->
 # TODO: merge into single route
 app.post \/multi-query, (req, res) ->
 
-    convert-query-to-valid-livescript = (query)->
-
-        lines = query.split \\n
-            |> filter -> 
-                line = it.trim!
-                !(line.length == 0 || line.0 == \#)
-
-        lines = [0 til lines.length] 
-            |> map (i)-> 
-                line = lines[i]
-                line = (if i > 0 then "},{" else "") + line if line.0 == \$
-                line
-
-        "[{#{lines.join '\n'}}]"
-
-    # compiles & executes livescript
-    run-livescript = (context, livescript)-> 
-        livescript = "\nglobal <<< require 'prelude-ls' \nglobal <<< context \n" + livescript
-        try 
-            return [null, eval compile livescript, {bare: true}]
-        catch error 
-            return [error, null]
-
-    get-transformation-context = -> {}
-
-    run-query = (query-id, parameters, callback) -->
-        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
-        return callback err if !!err
-        query := convert-query-to-valid-livescript query
-        err, result <- execute-query server-name, database, collection, query, cache, parameters
-        return callback err if !!err
-        [err, result] = run-livescript get-transformation-context!, "result = #{JSON.stringify result}\n#transformation"
-        return callback err if !!err
-        callback null, result
-
     {query, cache, parameters = "{}"} = req.body
-    user-code = query
 
-    code = """
-(callback) ->
-    fail = (err) !-> callback err, null
-    done = (res) !-> callback null, res
-
-#{user-code |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-    """
-
-    [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
-    return die err if !!err
-
-    #[err, result] = run-livescript (get-query-context! <<< JSON.parse parameters), code
-
-    [err, result] = compile-and-execute-livescript code, get-query-context! <<< (require \prelude-ls) <<< parameters <<< {run-query}
-    return die res, err.to-string! if !!err
-    err, query-res <- result!
+    err, query-res <- execute-multi-query query, cache, parameters
     return die res, err.to-string! if !!err
 
     # res.type \application/json
@@ -577,12 +583,21 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         return (get-latest-query-in-branch db, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {server-name, database, collection, query, transformation, presentation}:query?) <- get-query
+    (err, {server-name, database, collection, query, transformation, presentation, multi-query}:query?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if query == null
- 
-    err, result <- execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query
+    
+
+    do-query = (callback) ->
+        if !!multi-query
+            execute-multi-query query, cache, req.query, callback
+        else
+            execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query, callback
+            
+
+    err, result <- do-query
     return die res, err if !!err
+    console.log \result, result
 
     # return the query result without applying transformation or presentation code
     return res.end JSON.stringify result if req.params.layer == \-
