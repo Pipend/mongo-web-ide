@@ -7,12 +7,14 @@ d3 = require \d3-browserify
 # on DOM ready
 <- $
 
-die = (err)-> document.body.inner-HTML = "error: #{err}"
+commit-tree = $ \.commit-tree .get 0
+
+die = (err)-> commit-tree.inner-HTML = "error: #{err}"
 
 draw = (current-query-id, queries)->
 
     draw-commit-tree do 
-        (d3.select \body)
+        (d3.select commit-tree)
         window.inner-width
         window.inner-height
         queries
@@ -22,7 +24,7 @@ draw = (current-query-id, queries)->
                 name: \Id
             }
             {
-                key: \branchId 
+                key: \branchId
                 name: \Branch
             }
             {
@@ -78,19 +80,19 @@ draw = (current-query-id, queries)->
 
 fetch-queries = do ->
     cache = null
-    (use-cache, query-id, callback) ->
+    (use-cache, query-id, callback)->
         return callback null, cache if !!use-cache and !!cache
         err, queries <- queries-in-same-tree query-id
         return callback err, null if !!err
         callback null, cache := queries
 
-render = (use-cache, query-id)->
+render = (use-cache, query-id, callback)->
     err, queries <- fetch-queries use-cache, query-id
-    return die err if !!err    
+    return die err if !!err
     draw query-id, queries
+    callback!
 
+<- render false, window.query-id
 window.onresize = -> render true
-
-render false, window.query-id
 
 

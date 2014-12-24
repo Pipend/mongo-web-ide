@@ -20,6 +20,7 @@ vm = require \vm
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
 
+db.admin
 
 # global variables
 query-cache = {}
@@ -211,7 +212,6 @@ get-query-by-id = (db, query-id, callback) !-->
         ]
     return callback err, null if !!err
     callback null, if !!results and results.length > 0 then results.0 else null
-
 
 # create & setup express app
 app = express!
@@ -444,9 +444,11 @@ app.get \/list, (req, res)->
                         status: \$status
                     query-name: $last: \$queryName
                     query-id: $last: \$queryId
+                    server-name: $last: \$serverName
+                    database: $last: \$database
+                    collection: $last: \$collection
                     creation-time: $first: \$creationTime
                     modification-time: $last: \$creationTime
-                    status: $add-to-set: \$status
             }
             {
                 $match: 

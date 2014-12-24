@@ -188,12 +188,6 @@ get-document-state = ({query-id, tree-id, branch-id, parent-id}:identifiers?)->
                 .to-array!
     }
 
-# converts the hash query string to object
-get-hash = -> 
-    (window.location.hash.replace \#?, "").split \& 
-        |> map (.split \=) 
-        |> pairs-to-obj
-
 # get identifiers from local storage, remote state, null otherwise
 get-identifiers = (url, remote-document-states)->
 
@@ -403,14 +397,6 @@ save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
         ..done (response)-> callback null
         ..fail ({response-text})-> callback response-text
-
-# converts an object to hash query string
-set-hash = (obj)->
-    window.location.hash = {} <<< get-hash! <<< obj  
-        |> obj-to-pairs 
-        |> map (.join \=)
-        |> (.join \&)
-        |> -> "#?#{it}"
 
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0
@@ -646,32 +632,33 @@ $ ->
 
 
     $ \#commit-tree .on \click, ->
-        err, queries <- queries-in-same-tree history.state.query-id
-        return console.log err if !!err
+        window.open "/tree/#{history.state.query-id}"
 
-        draw-commit-tree do
-            (d3.select \.commit-tree)
-            600
-            240
-            queries
-            [
-                {
-                    key: \queryId
-                    name: \Id
-                }
-                {
-                    key: \branchId 
-                    name: \Branch
-                }
-                {
-                    key: \queryName
-                    name: \Name
-                }
-                {
-                    key: \creationTime
-                    name: \Date
-                }
-            ]
+        # err, queries <- queries-in-same-tree history.state.query-id
+        # return console.log err if !!err
+        # draw-commit-tree do
+        #     (d3.select \.commit-tree)
+        #     600
+        #     240
+        #     queries
+        #     [
+        #         {
+        #             key: \queryId
+        #             name: \Id
+        #         }
+        #         {
+        #             key: \branchId 
+        #             name: \Branch
+        #         }
+        #         {
+        #             key: \queryName
+        #             name: \Name
+        #         }
+        #         {
+        #             key: \creationTime
+        #             name: \Date
+        #         }
+        #     ]
 
     $ \#multi-query .on \change, -> 
         update-remote-state-button get-document-state history.state, window.remote-document-states
