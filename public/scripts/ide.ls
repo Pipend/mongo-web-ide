@@ -145,7 +145,12 @@ execute-query-and-display-results = do ->
         # display the new result    
         return display-error "ERROR IN THE QUERY: #{err}" if !!err
 
-        [, parameters-object] = run-livescript {}, null, parameters
+        # parameters is livescript code (string)
+        if !!parameters and parameters.trim!.length > 0
+            [err, parameters-object] = run-livescript {}, null, parameters
+            console.log err if !!err
+
+        parameters-object ?= {}
 
         [err, result] = run-livescript (get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
         return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
