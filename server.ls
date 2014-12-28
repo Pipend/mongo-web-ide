@@ -191,14 +191,13 @@ get-query-context = ->
     {
 
         # dependent on mongo operations
-        _object-id: ObjectID
-        _bucketize: bucketize
-        _timestamp-to-day: bucketize 86400000
-        _day-to-timestamp: (field) -> $multiply: [field, 86400000]
+        bucketize: bucketize
+        day-to-timestamp: (field) -> $multiply: [field, 86400000]
+        object-id: ObjectID
+        timestamp-to-day: bucketize 86400000
 
         # independent of any mongo operations
         parse-date
-        timestamp-to-day: -> it / 86400000
         to-timestamp
         today: today!
 
