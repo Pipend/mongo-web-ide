@@ -20,8 +20,6 @@ vm = require \vm
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
 
-db.admin
-
 # global variables
 query-cache = {}
 
@@ -191,13 +189,19 @@ get-query-context = ->
     to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
     today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
     {
-        object-id: ObjectID
-        bucketize
-        timestamp-to-day: bucketize 86400000
-        day-to-timestamp: (field) -> $multiply: [field, 86400000]
-        today: today!
+
+        # dependent on mongo operations
+        _object-id: ObjectID
+        _bucketize: bucketize
+        _timestamp-to-day: bucketize 86400000
+        _day-to-timestamp: (field) -> $multiply: [field, 86400000]
+
+        # independent of any mongo operations
         parse-date
+        timestamp-to-day: -> it / 86400000
         to-timestamp
+        today: today!
+
     }
 
 get-query-by-id = (db, query-id, callback) !-->
@@ -589,29 +593,26 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if query == null
     
-
     do-query = (callback) ->
         if !!multi-query
             execute-multi-query query, cache, req.query, callback
         else
             execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query, callback
-            
 
     err, result <- do-query
     return die res, err if !!err
-    console.log \result, result
 
     # return the query result without applying transformation or presentation code
     return res.end JSON.stringify result if req.params.layer == \-
 
     # apply transformation
-    [err, transformed-result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result}
+    [err, transformed-result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result} <<< req.query
     return die res, err if !!err
 
     # return the transformed result
     return res.end JSON.stringify transformed-result if req.params.layer == \transformation
 
-    res.render "public/presentation.html", {transformed-result, presentation}
+    res.render "public/presentation.html", {transformed-result, presentation, parameters: req.query}
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}

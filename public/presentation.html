@@ -5,6 +5,7 @@
 		<meta charset="utf8"/>
 		<script type="text/livescript" id="presentation"><%- presentation %></script>
 		<script type="text/javascript">			
+			window.parameters = <%- JSON.stringify(parameters) %>
 			window.transformedResult = <%- JSON.stringify(transformedResult) %>
 		</script>
 		<script type="text/javascript" src="/public/scripts/presentation.js"></script>

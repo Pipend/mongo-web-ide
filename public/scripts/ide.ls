@@ -143,13 +143,15 @@ execute-query-and-display-results = do ->
             $ ".output > pre" .html err
 
         # display the new result    
-        return display-error "query-editor error #{err}" if !!err
+        return display-error "ERROR IN THE QUERY: #{err}" if !!err
 
-        [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
-        return display-error "transformer error #{err}" if !!err
+        [, parameters-object] = run-livescript {}, null, parameters
 
-        [err, result] = run-livescript (get-presentation-context ($ ".output > pre" .get 0), ($ ".output > svg" .get 0), chart), result, presentation
-        return display-error "presenter error #{err}" if !!err
+        [err, result] = run-livescript (get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
+        return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
+
+        [err, result] = run-livescript (get-presentation-context ($ ".output > pre" .get 0) <<< parameters-object, ($ ".output > svg" .get 0), chart), result, presentation
+        return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
 # returns the url of the forked query 

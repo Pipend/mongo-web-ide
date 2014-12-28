@@ -30,5 +30,5 @@ run-livescript = (context, result, livescript)->
 <- $
 presentation = ($ \#presentation .html!)
 presentation .= replace /\t/g, " "
-[error] = run-livescript (get-presentation-context ($ \pre .get 0), ($ \svg .get 0), chart), window.transformed-result, presentation
+[error] = run-livescript (get-presentation-context ($ \pre .get 0), ($ \svg .get 0), chart) <<< window.parameters, window.transformed-result, presentation
 console.log error if !!error
