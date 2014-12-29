@@ -15,11 +15,6 @@ github-strategy = (require \passport-github).Strategy
 request = require \request
 vm = require \vm
 
-# connect to mongo-db
-(err, db) <- MongoClient.connect config.mongo, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.mongo}"
-
 # global variables
 query-cache = {}
 
@@ -62,7 +57,7 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-execute-json-query = (server-name, database, collection, query, callback) !-->
+execute-mongo-aggregation-pipeline = (server-name, database, collection, query, callback) !-->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
@@ -81,7 +76,7 @@ execute-json-query = (server-name, database, collection, query, callback) !-->
 
     callback null, result
 
-execute-query = (server-name, database, collection, query, cache, parameters, callback) !->
+execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters}:document, callback) !-->
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
@@ -92,69 +87,70 @@ execute-query = (server-name, database, collection, query, cache, parameters, ca
     key = md5 (query + "\n" + JSON.stringify parameters)    
     return callback null, query-cache[key] if cache and !!query-cache[key]    
 
-    # compile & execute livescript code to get the parameters for aggregation
-    [err, query] = compile-and-execute-livescript query, get-query-context! <<< (require \prelude-ls) <<< parameters
-    return callback err, null if !!err
+    # context properties that are same for different query types
+    query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
 
-    err, result <- execute-json-query server-name, database, collection, query
-    return callback err, null if !!err
+    if multi-query
 
-    callback null, query-cache[key] = result
-
-#TODO: a lot in commmon in execute-query
-execute-multi-query = (query, cache, parameters, callback) !->
-    convert-query-to-valid-livescript = (query)->
-
-        lines = query.split \\n
-            |> filter -> 
-                line = it.trim!
-                !(line.length == 0 || line.0 == \#)
-
-        lines = [0 til lines.length] 
-            |> map (i)-> 
-                line = lines[i]
-                line = (if i > 0 then "},{" else "") + line if line.0 == \$
-                line
-
-        "[{#{lines.join '\n'}}]"
-
-    run-query = (query-id, parameters, callback) -->
-        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
-        return callback err if !!err
-        query := convert-query-to-valid-livescript query
-        err, result <- execute-query server-name, database, collection, query, cache, parameters
-        return callback err if !!err
-        [err, result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result}
-        return callback err if !!err
-        callback null, result
-
-    user-code = query
-
-    code = """
+        code = """
 (callback) ->
     fail = (err) !-> callback err, null
     done = (res) !-> callback null, res
 
-#{user-code |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-    """
+#{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
+        """
 
-    # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
-    if \String == typeof! parameters
-        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+        [err, transpiled-code] = compile-and-execute-livescript do
+            code
+            query-context <<< {
+
+                run-query: (query-id, parameters, callback)-> 
+
+                    err, document <- get-query-by-id query-id
+                    return callback err, null if !!err
+
+                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+
+                run-latest-query: (branch-id, parameters, callback)->
+
+                    err, document <- get-latest-query-in-branch query-database, branch-id
+                    return callback err, null if !!err
+
+                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+
+                run-queryb: (branch-id, parameters, callback)->
+
+                    err, document <- get-latest-query-in-branch query-database, branch-id
+                    return callback err, null if !!err
+
+                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+
+            }
+        return callback err, null if !!err   
+
+        err, result <- transpiled-code!
         return callback err, null if !!err
 
-    # return cached result if any
-    key = md5 (code + "\n" + JSON.stringify parameters)    
-    return callback null, query-cache[key] if cache and !!query-cache[key]    
+        callback null, query-cache[key] = result          
 
+    else
 
-    [err, result] = compile-and-execute-livescript code, get-query-context! <<< (require \prelude-ls) <<< parameters <<< {run-query}
-    return callback err if !!err
+        [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
+        return callback err, null if !!err
 
-    err, result <- result!
-    return callback err if !!err
+        err, result <- execute-mongo-aggregation-pipeline server-name, database, collection, transpiled-code
+        return callback err, null if !!err
 
-    callback null, query-cache[key] = result
+        callback null, query-cache[key] = result
+    
+execute-and-transform-query = (query-database, {parameters, transformation}:document, callback) !-->
+
+    err, result <- execute-query query-database, document
+    return callback err, null if !!err
+
+    # apply transformation
+    [err, transformed-result] = compile-and-execute-livescript transformation, (get-transformation-context! <<< (require \prelude-ls) <<< {result} <<< parameters)
+    callback err, transformed-result
 
 get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
@@ -165,9 +161,9 @@ get-all-keys-recursively = (object, filter-function)->
 get-default-document-state = -> 
     {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
 
-get-latest-query-in-branch = (db, branch-id, callback) !-->
+get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
-    err, results <- db.collection \queries .aggregate do 
+    err, results <- query-database.collection \queries .aggregate do 
         [
             {
                 $match: {
@@ -203,8 +199,8 @@ get-query-context = ->
 
     }
 
-get-query-by-id = (db, query-id, callback) !-->
-    (err, results) <- db.collection \queries .aggregate do 
+get-query-by-id = (query-database, query-id, callback) !-->
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match: {query-id}
@@ -215,6 +211,11 @@ get-query-by-id = (db, query-id, callback) !-->
         ]
     return callback err, null if !!err
     callback null, if !!results and results.length > 0 then results.0 else null
+
+# connect to mongo-db
+(err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.mongo}"
 
 # create & setup express app
 app = express!
@@ -318,7 +319,7 @@ app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
 # redirect to latest query in the branch
 app.get "/branch/:branchId([a-zA-Z0-9]+)", (req, res)->
 
-    err, {query-id} <- get-latest-query-in-branch db, req.params.branch-id
+    err, {query-id} <- get-latest-query-in-branch query-database, req.params.branch-id
     return die res, err if !!err
 
     res.redirect "/branch/#{req.params.branchId}/#{query-id}"
@@ -328,7 +329,7 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 
     {query-id} = req.params
 
-    err, {status}:remote-document-state <- get-query-by-id db, query-id
+    err, {status}:remote-document-state <- get-query-by-id query-database, query-id
     return die res, err if !!err
     return die res, "query deleted" if !status
 
@@ -342,7 +343,7 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 # set the status property of the query to false
 app.get "/delete/query/:queryId", (req, res)->
 
-    (err, results) <- db.collection \queries .aggregate do 
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match:
@@ -351,10 +352,10 @@ app.get "/delete/query/:queryId", (req, res)->
         ]
     return die res, err if !!err
     
-    (err) <- db.collection \queries .update {query-id: req.params.query-id}, {$set: {status: false}}
+    (err) <- query-database.collection \queries .update {query-id: req.params.query-id}, {$set: {status: false}}
     return die res err if !!err
 
-    (err, queries-updated) <- db.collection \queries .update {parent-id: req.params.query-id}, {$set: {parent-id: results.0.parent-id}}, {multi:true}
+    (err, queries-updated) <- query-database.collection \queries .update {parent-id: req.params.query-id}, {$set: {parent-id: results.0.parent-id}}, {multi:true}
     return die res err if !!err    
 
     res.end results.0.parent-id
@@ -362,7 +363,7 @@ app.get "/delete/query/:queryId", (req, res)->
 # set the status property of all the queries in the branch to false
 app.get "/delete/branch/:branchId", (req, res)->
 
-    (err, results) <- db.collection \queries .aggregate do 
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match: 
@@ -381,7 +382,7 @@ app.get "/delete/branch/:branchId", (req, res)->
         results |> map (.query-id)
 
     # set the status of all queries in the branch to false i.e delete 'em all
-    (err) <- db.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
+    (err) <- query-database.collection \queries .update {branch-id: req.params.branch-id}, {$set: {status: false}}, {multi: true}
     return die res, err if !!err
 
     # reconnect the children to the parent of the branch
@@ -394,7 +395,7 @@ app.get "/delete/branch/:branchId", (req, res)->
                 parent-id: $in: results |> map (.query-id)
             }
         ]
-    (err, queries-updated) <- db.collection \queries .update criterion, {$set: {parent-id: parent-id.0}}, {multi:true}
+    (err, queries-updated) <- query-database.collection \queries .update criterion, {$set: {parent-id: parent-id.0}}, {multi:true}
     return die res, err if !!err
 
     res.end parent-id.0
@@ -402,10 +403,11 @@ app.get "/delete/branch/:branchId", (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
 
-    {server-name, database, collection, query, cache, parameters = "{}"} = req.body    
+    {server-name, database, collection, multi-query, query, cache, parameters = "{}"}:document = req.body    
 
-    err, result <-  execute-query server-name, database, collection, query, cache, parameters
-    return die res, err.to-string! if !!err
+    err, result <-  execute-query query-database, document
+    return die res, err if !!err
+
     res.end JSON.stringify result, null, 4
 
 # extract keywords from the latest record (for auto-completion)
@@ -415,7 +417,8 @@ app.get \/keywords/queryContext, (req, res) ->
 
 #
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
-    err, results <- execute-json-query req.params.server-name, req.params.database, req.params.collection,
+
+    err, results <- execute-mongo-aggregation-pipeline req.params.server-name, req.params.database, req.params.collection,
         [
             {
                 $sort: _id: -1
@@ -424,18 +427,20 @@ app.get \/keywords/:serverName/:database/:collection, (req, res)->
                 $limit: 10
             }
         ]
-    return die err, res if !!err     
+    return die err, res if !!err
+
     collection-keywords = 
         results 
             |> concat-map (-> get-all-keys-recursively it, (k, v)-> typeof v != \function)
             |> unique
+
     res.set \content-type, \application/json
     res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
 # return a list of all queries
 app.get \/list, (req, res)->
     search-string = req.query?.name or ""
-    (err, results) <- db.collection \queries .aggregate do
+    (err, results) <- query-database.collection \queries .aggregate do
         [
             {
                 $sort: _id: 1
@@ -470,22 +475,11 @@ app.get \/list, (req, res)->
         ]
     return die res, err if !!err
     res.end JSON.stringify results
-
-# TODO: merge into single route
-app.post \/multi-query, (req, res) ->
-
-    {query, cache, parameters = "{}"} = req.body
-
-    err, query-res <- execute-multi-query query, cache, parameters
-    return die res, err.to-string! if !!err
-
-    # res.type \application/json
-    res.end <| JSON.stringify query-res, null, 4
     
 # save the code to mongodb
 app.post \/save, (req, res)->
 
-    (err, results) <- db.collection \queries .aggregate do 
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match:
@@ -515,7 +509,7 @@ app.post \/save, (req, res)->
 
         return die res, JSON.stringify {queries-in-between}
     
-    (err, records) <- db.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, status: true}, {w: 1}
+    (err, records) <- query-database.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, status: true}, {w: 1}
     return die res, err if !!err
 
     res.end JSON.stringify records.0
@@ -527,14 +521,14 @@ app.get "/query/:queryId(\\d+)", (req, res)->
 
 # redirect to the correct url based on query-id
 app.get "/query/:queryId", (req, res)->
-    err, {branch-id} <- get-query-by-id db, req.params.query-id
+    err, {branch-id} <- get-query-by-id query-database, req.params.query-id
     return die res, err if !!err
     res.redirect "/branch/#{branch-id}/#{req.params.query-id}"
 
 # returns all the queries that are in the same tree as that of req.params.query-id
 app.get "/queries/tree/:queryId", (req, res)->
 
-    (err, results) <- db.collection \queries .aggregate do 
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match:
@@ -549,7 +543,7 @@ app.get "/queries/tree/:queryId", (req, res)->
     return die res, err if !!err
     return die res, "unable to find query #{req.params.query-id}" if results.length == 0
 
-    (err, results) <- db.collection \queries .aggregate do 
+    (err, results) <- query-database.collection \queries .aggregate do 
         [
             {
                 $match:
@@ -584,32 +578,28 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     {query-id, branch-id} = req.params
 
     get-query = do ->
-        return (get-query-by-id db, query-id) if !!query-id
-        return (get-latest-query-in-branch db, branch-id) if !!branch-id
+        return (get-query-by-id query-database, query-id) if !!query-id
+        return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {server-name, database, collection, query, transformation, presentation, multi-query}:query?) <- get-query
+    (err, {presentation}:document?) <- get-query
     return die res, err if !!err
-    return die res, "unable to find query: #{req.params.query-id}" if query == null
-    
-    do-query = (callback) ->
-        if !!multi-query
-            execute-multi-query query, cache, req.query, callback
-        else
-            execute-query server-name, database, collection, (convert-query-to-valid-livescript query), cache, req.query, callback
+    return die res, "unable to find query: #{req.params.query-id}" if document == null
 
-    err, result <- do-query
+    updated-document = document <<< {cache, parameters: req.query}
+
+    console.log \p, updated-document.parameters
+
+    run = (func)->
+        err, result <- func
+        return die res, err if !!err
+        res.end JSON.stringify result, null, 4    
+
+    return run (execute-query query-database, updated-document) if req.params.layer == \-
+    return run (execute-and-transform-query query-database, updated-document) if req.params.layer == \transformation
+
+    err, transformed-result <- execute-and-transform-query query-database, updated-document
     return die res, err if !!err
-
-    # return the query result without applying transformation or presentation code
-    return res.end JSON.stringify result if req.params.layer == \-
-
-    # apply transformation
-    [err, transformed-result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result} <<< req.query
-    return die res, err if !!err
-
-    # return the transformed result
-    return res.end JSON.stringify transformed-result if req.params.layer == \transformation
 
     res.render "public/presentation.html", {transformed-result, presentation, parameters: req.query}
 

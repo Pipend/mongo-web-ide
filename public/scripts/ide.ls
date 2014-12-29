@@ -60,23 +60,6 @@ create-livescript-editor = (element-id)->
             if e.command.name == "insertstring" and /^\$\w*$/.test e.args
                 editor.execCommand \startAutocomplete
 
-# filters out empty lines and lines that begin with comment
-# also encloses the query objects in a collection
-convert-query-to-valid-livescript = (query)->
-
-    lines = query.split (new RegExp "\\r|\\n")
-        |> filter -> 
-            line = it.trim!
-            !(line.length == 0 || line.0 == \#)
-
-    lines = [0 til lines.length] 
-        |> map (i)-> 
-            line = lines[i]
-            line = (if i > 0 then "},{" else "") + line if line.0 == \$
-            line
-
-    "[{#{lines.join '\n'}}]"
-
 # makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
 execute-query = do ->
@@ -85,9 +68,6 @@ execute-query = do ->
 
     (query, parameters, server-name, database, collection, multi-query, cache, callback)->
     
-        if not multi-query
-            query = convert-query-to-valid-livescript query
-
         # compose request object
         request = {            
             server-name
@@ -95,13 +75,14 @@ execute-query = do ->
             collection
             query
             parameters
+            multi-query
         }
 
         # return cached response (if any)
         return callback previous.err, previous.result if cache and request `is-equal-to-object` previous.request
 
         #TODO: use same url for both multi-query and query
-        query-result-promise = $.post (if multi-query then \/multi-query else \/execute), JSON.stringify {cache} <<< request
+        query-result-promise = $.post \/execute, JSON.stringify {cache} <<< request
             ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
@@ -439,7 +420,9 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
     if update-ui
         if !!ui
             if !!ui.editors
-                ui.editors |> each ({id, height}) -> $ '#' + id .css \height, height
+                ui.editors 
+                    |> filter ({id}) -> id != \parameters-editor
+                    |> each ({id, height}) -> $ '#' + id .css \height, height
             if !!ui.left-editors-width
                 $ \.editors .css \width, ui.left-editors-width
         resize-ui!
