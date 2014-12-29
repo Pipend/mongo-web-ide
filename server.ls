@@ -118,8 +118,10 @@ execute-multi-query = (query, cache, parameters, callback) !->
 
         "[{#{lines.join '\n'}}]"
 
-    run-query = (query-id, parameters, callback) -->
-        err, {query-name, server-name, database, collection, query, transformation} <- get-query-by-id db, query-id
+
+    exec-query = (query-getter, parameters, callback) -->
+        err, {query-name, server-name, database, collection, query, transformation}? <- query-getter
+        return callback "Query not found #query-id", null if !query-name
         return callback err if !!err
         query := convert-query-to-valid-livescript query
         err, result <- execute-query server-name, database, collection, query, cache, parameters
@@ -127,6 +129,13 @@ execute-multi-query = (query, cache, parameters, callback) !->
         [err, result] = compile-and-execute-livescript transformation, get-transformation-context! <<< (require \prelude-ls) <<< {result}
         return callback err if !!err
         callback null, result
+
+    run-query = (query-id, parameters, callback) --> 
+        exec-query (get-query-by-id db, query-id), parameters, callback
+
+
+    run-queryb = (branch-id, parameters, callback) --> 
+        exec-query (get-latest-query-in-branch db, branch-id), parameters, callback
 
     user-code = query
 
