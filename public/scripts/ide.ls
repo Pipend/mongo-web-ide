@@ -52,12 +52,11 @@ create-livescript-editor = (element-id)->
         ..set-theme \ace/theme/monokai
         ..set-show-print-margin false
         ..get-session!.set-mode \ace/mode/livescript
-        ..commands.on \afterExec ({editor, command}) ->
-            range = editor.getSelectionRange!
-            range = range.clone!
+        ..commands.on \afterExec ({editor, command, args}) ->
+            range = editor.getSelectionRange!.clone!
             range.setStart range.start.row, 0
             line = editor.session.getTextRange range
-            if command.name == "insertstring" and /.*(\.|\s+(\w|\$|\"|\'|\(|\[|\{))$/.test line
+            if command.name == "insertstring" and (/^\$\w*$/.test args or /.*(\.|\s+(\w|\$|\"|\'|\(|\[|\{))$/.test line)
                 editor.execCommand \startAutocomplete
 
 # makes a POST request to the server and returns the result of the mongo query
