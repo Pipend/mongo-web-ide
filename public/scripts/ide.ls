@@ -56,7 +56,7 @@ create-livescript-editor = (element-id)->
             range = editor.getSelectionRange!.clone!
             range.setStart range.start.row, 0
             line = editor.session.getTextRange range
-            if command.name == "insertstring" and (/^\$\w*$/.test args or /.*(\.|\s+(\w|\$|\"|\'|\(|\[|\{))$/.test line)
+            if command.name == "insertstring" and (/^\$[a-zA-Z]*$/.test args or /.*(\.|\s+[a-zA-Z\$\"\'\(\[\{])$/.test line)
                 editor.execCommand \startAutocomplete
 
 # makes a POST request to the server and returns the result of the mongo query
