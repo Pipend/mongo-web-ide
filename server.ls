@@ -588,8 +588,6 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
 
     updated-document = document <<< {cache, parameters: req.query}
 
-    console.log \p, updated-document.parameters
-
     run = (func)->
         err, result <- func
         return die res, err if !!err
