@@ -597,9 +597,17 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     return run (execute-and-transform-query query-database, updated-document) if req.params.layer == \transformation
 
     err, transformed-result <- execute-and-transform-query query-database, updated-document
-    return die res, err if !!err
-
-    res.render "public/presentation.html", {transformed-result, presentation, parameters: req.query}
+    return die res, err if !!err    
+    res.render do
+        \public/presentation.html
+        {
+            transformed-result
+            presentation: """
+            draw = (view, result)->
+            #{presentation |> Str.lines |> map (-> "    " + it) |> Str.unlines}
+            """
+            parameters: req.query
+        }
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}

@@ -139,7 +139,7 @@ execute-query-and-display-results = do ->
         [err, result] = run-livescript (get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
         return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
 
-        [err, result] = run-livescript get-presentation-context! <<< {div: ($ \.output .get 0)}, result, presentation
+        [err, result] = run-livescript get-presentation-context! <<< {view: ($ \.output .get 0)}, result, presentation
         return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
