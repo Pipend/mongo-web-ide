@@ -12,23 +12,27 @@ require \LiveScript
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{map} = require \prelude-ls
+{map, Str} = require \prelude-ls
 {get-presentation-context} = require \./presentation-context.ls
 
 # module-global variables  
 chart = null
 
-# compiles & executes livescript
-run-livescript = (context, result, livescript)-> 
-    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript           
-    try
-        javascript = compile livescript, {bare: true}
-        return [null, eval javascript]
-    catch error 
-        return [error, null]
-        
 <- $
-presentation = ($ \#presentation .html!)
-presentation .= replace /\t/g, " "
-[error] = run-livescript (get-presentation-context ($ \pre .get 0), ($ \svg .get 0), chart) <<< window.parameters, window.transformed-result, presentation
-console.log error if !!error
+presentation = ($ \#presentation .html!).replace /\t/g, " "
+
+try
+	eval compile do 
+		"""
+		window <<< (require 'prelude-ls') <<< get-presentation-context! <<< window.parameters
+		#{presentation}
+		"""
+		{bare: true}	
+	draw document.body, window.transformed-result
+
+catch err
+	console.log err.to-string!
+
+
+
+

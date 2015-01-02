@@ -1,33 +1,64 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, map, unique, sort} = require \prelude-ls
+{concat-map, map, unique, sort, sum, tail, drop} = require \prelude-ls
 
-module.exports.get-presentation-context = (pre, svg, chart)->
+module.exports.get-presentation-context = ->
 
     # all functions defined here are accessibly by the presentation code
     {
 
-        json: (result)-> 
+        layout: (view, direction, ...)!->            
 
-            # display the pre tag
-            $ pre .show!
-            $ svg .hide!
+            functions = drop 2, Array.prototype.slice.call arguments            
 
-            # update the contents of the pre tag
-            $ pre .html JSON.stringify result, null, 4
+            child-views = [0  til functions.length]
+                |> map (i)->
+                    child-view = document.create-element \div
+                        ..style <<< {                            
+                            overflow: \auto
+                            position: \absolute                            
+                        }
+                        ..class-name = direction
+                    view.append-child child-view
+                    [child-view, functions[i](child-view)]
 
-        table: (result)-> 
+            sizes = child-views 
+                |> filter ([, size])-> !!size and typeof size == \number
+                |> map ([, size])-> size                 
 
-            # display the pre tag
-            $ pre .show!
-            $ svg .hide!
+            default-size = (1 - (sum sizes)) / (child-views.length - sizes.length)
+
+            child-views-with-size = child-views |> map ([child-view, size])-> [child-view, (size or default-size)]
+                
+            [0 til child-views-with-size.length]
+                |> each (i)->
+                    [child-view, size] = child-views-with-size[i]                    
+                    position = take i, child-views-with-size
+                        |> map ([, size])-> size
+                        |> sum
+                    child-view.style <<< {
+                        left: if direction == \horizontal then "#{position * 100}%" else "0%"
+                        top: if direction == \horizontal then "0%" else "#{position * 100}%"
+                        width: if direction == \horizontal then "#{size * 100}%" else "100%"
+                        height: if direction == \horizontal then "100%" else "#{size * 100}%"
+                    }
+
+        layout-horizontal: (view, ...)!-> @layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+
+        layout-vertical: (view, ...)!-> @layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
+
+        json: (view, result)!-> 
+            pre = $ "<pre/>"
+                ..html JSON.stringify result, null, 4
+            ($ view).append pre
+
+        table: (view, result)!-> 
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
             #todo: don't do this if the table is already present
-            $ pre .html ''
-            $table = d3.select \pre .append \table
+            $table = d3.select view .append \pre .append \table
             $table.append \thead .append \tr
             $table.append \tbody
 
@@ -47,36 +78,23 @@ module.exports.get-presentation-context = (pre, svg, chart)->
                     ..enter!
                         .append \td
                     ..exit!.remove!
-                    ..text (.1)
+                    ..text (.1)        
+        
 
-        plot-histogram: (result)->
+        plot-histogram: (view, result)!->
 
             <- nv.add-graph
 
-            chart := nv.models.multi-bar-chart!
+            chart = nv.models.multi-bar-chart!
                 .x (.label)
                 .y (.value)
 
-            # display the svg
-            $ pre .hide!
-            $ svg .show!
-            d3.select \svg .datum result .call chart
-
-        plot-timeseries: (result)->
-
-            <- nv.add-graph 
-
-            chart := nv.models.line-chart!
-                .x (.0)
-                .y (.1)
-            chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            d3.select view .append \svg .datum result .call chart
             
-            # display the svg
-            $ pre .hide!
-            $ svg .show!
-            d3.select \svg .datum result .call chart
-            
-        plot-stacked-area: (result, {y-axis-format = (d3.format ',')})->
+            chart.update!
+
+
+        plot-stacked-area: (view, result, {y-axis-format = (d3.format ',')})!->
 
             <- nv.add-graph 
 
@@ -85,7 +103,7 @@ module.exports.get-presentation-context = (pre, svg, chart)->
                 key: key
                 values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
 
-            chart := nv.models.stacked-area-chart!
+            chart = nv.models.stacked-area-chart!
                 .x (.0)
                 .y (.1)
                 .useInteractiveGuideline true
@@ -96,16 +114,16 @@ module.exports.get-presentation-context = (pre, svg, chart)->
                 ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
                 ..y-axis.tick-format y-axis-format
             
-            # display the svg
-            $ pre .hide!
-            $ svg .show!
-            d3.select \svg .datum result .call chart
+            d3.select view .append \svg .datum result .call chart
+            
+            chart.update!
+            
 
-        plot-scatter: (result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')}) ->
+        plot-scatter: (view, result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')})!->
 
             <- nv.add-graph
 
-            chart := nv.models.scatter-chart!
+            chart = nv.models.scatter-chart!
                 .show-dist-x true
                 .show-dist-y true
                 .transition-duration 350
@@ -120,12 +138,24 @@ module.exports.get-presentation-context = (pre, svg, chart)->
                 ..x-axis.tick-format x-axis-format
                 ..y-axis.tick-format y-axis-format
 
-            # display the svg
-            $ pre .hide!
-            $ svg .show!
-            d3.select \svg .datum result .call chart
+            d3.select view .append \svg .datum result .call chart
+            
+            chart.update!            
 
-    }
+        plot-timeseries: (view, result)!->            
+
+            <- nv.add-graph
+
+            chart = nv.models.line-chart!
+                .x (.0)
+                .y (.1)
+            chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            
+            d3.select view .append \svg .datum result .call chart
+
+            chart.update!
+
+    }    
 
 
 
