@@ -1,14 +1,11 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, map, unique, sort, sum, tail, drop} = require \prelude-ls
+{concat-map, drop, each, filter, map, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 module.exports.get-presentation-context = ->
 
-    # all functions defined here are accessibly by the presentation code
-    {
-
-        layout: (view, direction, ...)!->            
+    layout = (view, direction, ...)!->            
 
             functions = drop 2, Array.prototype.slice.call arguments            
 
@@ -44,9 +41,12 @@ module.exports.get-presentation-context = ->
                         height: if direction == \horizontal then "100%" else "#{size * 100}%"
                     }
 
-        layout-horizontal: (view, ...)!-> @layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+    # all functions defined here are accessibly by the presentation code
+    {        
 
-        layout-vertical: (view, ...)!-> @layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
+        layout-horizontal: (view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+
+        layout-vertical: (view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
 
         json: (view, result)!-> 
             pre = $ "<pre/>"

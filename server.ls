@@ -602,10 +602,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         \public/presentation.html
         {
             transformed-result
-            presentation: """
-            draw = (view, result)->
-            #{presentation |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-            """
+            presentation
             parameters: req.query
         }
 

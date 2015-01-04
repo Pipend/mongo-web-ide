@@ -14,15 +14,10 @@ ace-language-tools = require \brace/ext/language_tools
 window.d3 = require \d3-browserify
 require \nvd3 
 
-# the first require is used by browserify to import the LiveScript module
-# the second require is defined in the LiveScript module and exports the object
-require \LiveScript
-{compile} = require \LiveScript
-
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
+{concat-map, dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type, Str} = require \prelude-ls
 
 # normal dependencies
 base62 = require \base62
@@ -37,6 +32,7 @@ $ = require \jquery-browserify
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
+{compile-and-execute-livescript} = require \./utils.ls
 
 # module-global variables  
 chart = null
@@ -99,9 +95,9 @@ execute-query-and-display-results = do ->
         busy := true
 
         # show preloader
-        $ \.preloader .show!        
+        $ \.preloader .show!
 
-        # query, transform & plot         
+        # query, transform & plot
         cache = should-cache!
 
         (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
@@ -110,7 +106,7 @@ execute-query-and-display-results = do ->
         busy := false
         $ \.preloader .hide!
 
-        # clear existing result        
+        # clear existing result
         $ \.output .empty!
 
         # dispatch a destroy event for presentation context to clear the resize event listeners
@@ -135,10 +131,10 @@ execute-query-and-display-results = do ->
 
         parameters-object ?= {}
 
-        [err, result] = run-livescript ({} <<< get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
-        return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
+        [err, result] = compile-and-execute-livescript transformation, {result: JSON.parse result} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls)
+        return display-error "ERROR IN THE TRANSFORMATION CODE: #{err}" if !!err
 
-        [err, result] = run-livescript {} <<< get-presentation-context! <<< {view: ($ \.output .get 0)}, result, presentation
+        [err, result] = compile-and-execute-livescript presentation, {result, d3, $, view: ($ \.output .get 0)} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
         return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
@@ -377,14 +373,6 @@ resize-ui = ->
         ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#info .outer-width!) / 2)
     chart.update! if !!chart
 
-# compiles & executes livescript
-run-livescript = (context, result, livescript)-> 
-    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
-    try 
-        return [null, eval compile livescript, {bare: true}]
-    catch error 
-        return [error, null]
-
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
@@ -531,8 +519,8 @@ $ ->
 
         presentation-editor-keywords-d3 = keywords-from-context d3
 
-        presentation-editor-keywords = do ->
-            (keywords-from-context get-presentation-context!)
+        presentation-editor-keywords = do ->            
+            [get-presentation-context!, (require \prelude-ls)] |> concat-map keywords-from-context
 
         ace-language-tools.add-completer {
             # :: Editor -> EditSession -> Range -> prefix :: String -> callback
