@@ -14,24 +14,25 @@ ace-language-tools = require \brace/ext/language_tools
 window.d3 = require \d3-browserify
 require \nvd3 
 
-# the first require is used by browserify to import the LiveScript module
-# the second require is defined in the LiveScript module and exports the object
-require \LiveScript
-{compile} = require \LiveScript
-
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{dasherize, filter, find, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
+{concat-map, dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type, Str} = require \prelude-ls
 
 # normal dependencies
+base62 = require \base62
+client-storage = require \./client-storage.ls
+{draw-commit-tree} = require \./commit-tree.ls
+{conflict-dialog} = require \./conflict-dialog.ls
 $ = require \jquery-browserify
 {key} = require \keymaster
 {get-presentation-context} = require \./presentation-context.ls
+{search-queries-by-name, queries-in-same-tree} = require \./queries.ls
 {query-search} = require \./query-search.ls
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
+{compile-and-execute-livescript} = require \./utils.ls
 
 # module-global variables  
 chart = null
@@ -39,39 +40,20 @@ presentation-editor = null
 query-editor = null
 transformation-editor = null
 parameters-editor = null
-page-url-regex = new RegExp "http\\:\\/\\/(.*)?\\/query\\/(\\d+)(\\#\\?.*)?"
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
-    ace.edit element-id
+    editor = ace.edit element-id
         ..set-options {enable-basic-autocompletion: true}
         ..set-theme \ace/theme/monokai
         ..set-show-print-margin false
         ..get-session!.set-mode \ace/mode/livescript
-
-# takes a collection of keywords & maps them to {name, value, score, meta}
-convert-to-ace-keywords = (keywords, meta, prefix)->
-    keywords
-        |> map -> {text: it, meta: meta}
-        |> filter -> it.text.index-of(prefix) == 0 
-        |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
-
-# filters out empty lines and lines that begin with comment
-# also encloses the query objects in a collection
-convert-query-to-valid-livescript = (query)->
-
-    lines = query.split (new RegExp "\\r|\\n")
-        |> filter -> 
-            line = it.trim!
-            !(line.length == 0 || line.0 == \#)
-
-    lines = [0 til lines.length] 
-        |> map (i)-> 
-            line = lines[i]
-            line = (if i > 0 then "},{" else "") + line if line.0 == \$
-            line
-
-    "[{#{lines.join '\n'}}]"
+        ..commands.on \afterExec ({editor, command, args}) ->
+            range = editor.getSelectionRange!.clone!
+            range.setStart range.start.row, 0
+            line = editor.session.getTextRange range
+            if command.name == "insertstring" and (/^\$[a-zA-Z]*$/.test args or /.*(\.|\s+[a-zA-Z\$\"\'\(\[\{])$/.test line)
+                editor.execCommand \startAutocomplete
 
 # makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
@@ -81,9 +63,6 @@ execute-query = do ->
 
     (query, parameters, server-name, database, collection, multi-query, cache, callback)->
     
-        if not multi-query
-            query = convert-query-to-valid-livescript query
-
         # compose request object
         request = {            
             server-name
@@ -91,13 +70,14 @@ execute-query = do ->
             collection
             query
             parameters
+            multi-query
         }
 
         # return cached response (if any)
         return callback previous.err, previous.result if cache and request `is-equal-to-object` previous.request
 
         #TODO: use same url for both multi-query and query
-        query-result-promise = $.post (if multi-query then \/multi-query else \/execute), JSON.stringify {cache} <<< request
+        query-result-promise = $.post \/execute, JSON.stringify {cache} <<< request
             ..done (response)->                 
                 previous <<< {request, err: null, result: response}
                 callback null, response
@@ -115,44 +95,70 @@ execute-query-and-display-results = do ->
         busy := true
 
         # show preloader
-        $ \.preloader .show!        
+        $ \.preloader .show!
 
-        # query, transform & plot         
+        # query, transform & plot
         cache = should-cache!
 
         (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
 
+        # hide the preloader
         busy := false
-
         $ \.preloader .hide!
 
         # clear existing result
-        $ \pre .html ""
-        $ \svg .empty!
+        $ \.output .empty!
+
+        # dispatch a destroy event for presentation context to clear the resize event listeners
+        output = $ \.output .get 0
+        output.dispatch-event new Event \destroy
 
         # update the cache indicator
         $ \#cache .parent! .toggle-class "highlight green", cache
 
         display-error = (err)->
-            show-output-tag \pre
-            $ \pre .html err
-
+            pre = $ "<pre/>"
+            pre.html err.to-string!
+            $ \.output .empty! .append pre
+            
         # display the new result    
-        return display-error "query-editor error #{err}" if !!err
+        return display-error "ERROR IN THE QUERY: #{err}" if !!err
 
-        [err, result] = run-livescript get-transformation-context!, (JSON.parse result), transformation
-        return display-error "transformer error #{err}" if !!err
+        # parameters is livescript code (string)
+        if !!parameters and parameters.trim!.length > 0
+            [err, parameters-object] = compile-and-execute-livescript parameters, {}
+            console.log err if !!err
 
-        [err, result] = run-livescript (get-presentation-context chart, plot-chart, show-output-tag), result, presentation
-        return display-error "presenter error #{err}" if !!err
+        parameters-object ?= {}
 
-# gets the documetn state from the dom elements
-get-document-state = (query-id)->
-    {
-        query-id
+        [err, result] = compile-and-execute-livescript transformation, {result: JSON.parse result} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls)
+        return display-error "ERROR IN THE TRANSFORMATION CODE: #{err}" if !!err
+
+        [err, result] = compile-and-execute-livescript presentation, {result, d3, $, view: ($ \.output .get 0)} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
+        return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
+
+# if the local state has diverged from remote state, creates a new tree
+# returns the url of the forked query 
+fork = ({query-id, tree-id}:document-state, remote-document-states) ->
+    changed = has-document-changed document-state, remote-document-states
+    encoded-time = base62.encode Date.now!    
+    forked-document-state = get-document-state {
+        query-id: encoded-time
+        parent-id: query-id
+        branch-id: \local-fork
+        tree-id
+    }
+    forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
+    client-storage.save-document-state forked-document-state.query-id, forked-document-state
+    reset-document-sate query-id, remote-document-states
+    "/branch/local/#{forked-document-state.query-id}"
+
+# gets the document state from the dom elements
+get-document-state = ({query-id, tree-id, branch-id, parent-id}:identifiers?)->
+    {} <<< (if !!identifiers then {query-id, tree-id, branch-id, parent-id} else {}) <<< {
         query-name: $ \#query-name .val!
         server-name: $ \#server-name .val!
-        database: $ \#database .val!
+        database: $ \#database .val!,
         collection: $ \#collection .val!
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
@@ -168,22 +174,28 @@ get-document-state = (query-id)->
                 .to-array!
     }
 
-# converts the hash query string to object
-get-hash = -> 
-    (window.location.hash.replace \#?, "").split \& 
-        |> map (.split \=) 
-        |> pairs-to-obj
+# get identifiers from local storage, remote state, null otherwise
+get-identifiers = (url, remote-document-states)->
 
-## gets the query id from the url
-get-query-id = do ->
+        # extract from url & local storage using regex (branch/local/local-query-id)
+        [, , query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local/([a-zA-Z0-9]+)/?"
+        return {branch-id: \local, query-id} if !!query-id
 
-    result = null
+        # extract from url & local storage using regex (branch/local/local-query-id)
+        [, , query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/local-fork/([a-zA-Z0-9]+)/?"
+        return {branch-id: \local-fork, query-id} if !!query-id
 
-    (url)->
-        return result if !!result
+        # extract from url & local storage using regex (branch/branch-id/query-id)
+        [, , branch-id, query-id]? = url.match new RegExp "http\\:\\/\\/(.*)?\\/branch\\/([a-zA-Z0-9]+)/([a-zA-Z0-9]+)/?"
+        if !!query-id
+            {query-id, branch-id, parent-id, tree-id}? = client-storage.get-document-state query-id
+            return {query-id, branch-id, parent-id, tree-id} if !!query-id
 
-        [url, domain, query-id, query-parameters]? = window.location.href.match page-url-regex
-        result := parse-int try-get query-id, new Date!.get-time!
+        # extract from the server response
+        {query-id, branch-id, parent-id, tree-id}? = remote-document-states.0
+        return {query-id, branch-id, parent-id, tree-id} if !!query-id
+
+        null
 
 # gets the query parameters from the url
 get-query-parameters = ->
@@ -191,10 +203,10 @@ get-query-parameters = ->
     try-get query-parameters, ""
 
 # returns noop if the document hasn't changed since the last save
-get-save-function = (document-state)->
+get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
 
     # if there are no changes to the document return noop as the save function
-    return [false, (callback)-> callback! if !!callback] if !has-document-changed document-state
+    return [false, (callback)-> callback null] if !has-document-changed document-state, remote-document-states
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
@@ -202,27 +214,105 @@ get-save-function = (document-state)->
         true
         (callback)->
 
-            # update the local-storage before making the request to recover from unexpected crash
-            save-to-local-storage document-state
+            # resolve the conflict creating a new commit or forking a new branch
+            resolve-conflict = (queries-in-between, get-parent-query-id)->
 
-            (err) <- save-to-server document-state
-            return console.log err if !!err
+                conflict-dialog-container = $ ".conflict-dialog-container" .get 0
+                encoded-time = base62.encode Date.now!
 
-            window.remote-document-state = document-state
-            callback! if !!callback
+                React.render do 
+                    conflict-dialog do
+                        queries: queries-in-between
+                        on-resolved: (resolution)-> 
+
+                            if resolution == \new-commit
+
+                                # option #1: create a new commit & place it at the head
+                                save-and-push-state {} <<< document-state <<< {
+                                    query-id: encoded-time                    
+                                    parent-id: get-parent-query-id resolution
+                                }
+
+                            else if resolution == \fork
+
+                                # option #2: fork a new branch
+                                save-and-push-state {} <<< document-state <<< {
+                                    query-id: encoded-time
+                                    branch-id: encoded-time
+                                    parent-id: get-parent-query-id resolution
+                                }
+
+                            else if resolution == \reset
+
+                                # option #3: delete local storage and reset to history.state
+                                return if !confirm "Are you sure you want to reset your changes?"
+                                client-storage.delete-document-state query-id
+                                update-dom-with-document-state history.state
+
+                            
+                    conflict-dialog-container
+
+            # save the state, reset local storage and update history
+            save-and-push-state = (document-state)->
+
+                (err) <- save-to-server document-state
+
+                if !!err                    
+
+                    error-json = try-parse-json err
+
+                    if !!error-json?.queries-in-between
+                        resolve-conflict error-json.queries-in-between, (resolution)-> if resolution == \new-commit then error-json.queries-in-between.0 else query-id
+                        return callback null
+
+                    return callback err
+
+                history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
+                remote-document-states.unshift document-state
+                client-storage.delete-document-state query-id
+                callback null
+                            
+
+            # non fast-forward case
+            if !!remote-document-states.0?.query-id and query-id != remote-document-states.0?.query-id
+
+                # make sure that the head is saved
+                client-head-state = client-storage.get-document-state remote-document-states.0.query-id
+                if !!client-head-state and has-document-changed client-head-state, remote-document-states
+                    return callback "Please save the head query"
+
+                # display conflict resolution dialog
+                resolution <- resolve-conflict [0 til remote-document-states |> find-index (.query-id == query-id)] 
+                if resolution == \new-commit then remote-document-states.0.query-id else query-id
+
+            # fast-forward
+            else
+
+                encoded-time = base62.encode Date.now!
+
+                # the parent id of forked queries is computed at the time of there creation
+                new-parent-id = match branch-id
+                | \local => null
+                | \local-fork => parent-id
+                | otherwise => query-id
+
+                save-and-push-state {} <<< document-state <<< {
+                    query-id: encoded-time
+                    parent-id: new-parent-id
+                    branch-id: if (branch-id.index-of \local) == 0 then encoded-time else branch-id
+                    tree-id: tree-id || encoded-time                    
+                }
+                
 
     ]
 
 # compares document-state with remote document state
-has-document-changed = (document-state)->
+has-document-changed = ({query-id}:document-state, remote-document-states)->
 
-    remove-ui-key = ->
-        it 
-            |> obj-to-pairs
-            |> filter ([key, ...]) -> key != \ui
-            |> pairs-to-obj
+    remote-document-state = (remote-document-states |> find (.query-id == query-id)) or remote-document-states.0
 
-    !((remove-ui-key document-state) `is-equal-to-object` (remove-ui-key window.remote-document-state))
+    keys = <[ui queryId branchId parentId localQueryId]>
+    !(omit document-state, keys) `is-equal-to-object` omit remote-document-state, keys
 
 # two objects are equal if they have the same keys & values
 is-equal-to-object = (o1, o2)->
@@ -237,24 +327,28 @@ is-equal-to-object = (o1, o2)->
         else
             o1[key] == o2[key]
 
+# returns a new object by omiting keys from the source object
+omit = (obj, keys)->
+    obj 
+        |> obj-to-pairs
+        |> filter ([key, ...]) -> (keys.index-of key) == -1
+        |> pairs-to-obj
+
 # returns dasherized collection of keywords for auto-completion
 keywords-from-context = (context)->
     context
         |> obj-to-pairs 
         |> map -> dasherize it.0
 
-# tries to load the document state from local-storage on failure returns the remote document state
-load-document-state = (query-id)->
-    state = if !!(local-storage.get-item query-id) then JSON.parse (local-storage.get-item query-id) else {} <<< window.remote-document-state
-    state <<< {query-id}    
-
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
 
-# DRY function used by presentation-context
-plot-chart = (chart, result)->
-    show-output-tag \svg
-    d3.select \svg .datum result .call chart
+#
+reset-document-sate = (query-id, remote-document-states)->
+    client-storage.delete-document-state query-id
+    document-state = remote-document-states |> find (.query-id == query-id)
+    update-dom-with-document-state document-state
+    update-remote-state-button document-state, remote-document-states
 
 # update the ace-editors after there corresponding div elements have been resized
 resize-editors = -> [query-editor, transformation-editor, presentation-editor] |> map (.resize!)
@@ -263,8 +357,11 @@ resize-editors = -> [query-editor, transformation-editor, presentation-editor] |
 resize-ui = ->
     $ \.output .width window.inner-width - ($ \.editors .width!) - ($ \.resize-handle.vertical .width!)
     $ \.output .height window.inner-height - ($ \.menu .height!)
-    $ "pre, svg" .width ($ \.output .width!)
-    $ "pre, svg" .height ($ \.output .height!)
+
+    # trigger resize event on the output element for the presentation context
+    output = $ \.output .get 0
+    output.dispatch-event new Event \resize
+
     $ \.resize-handle.vertical .height Math.max ($ \.output .height!), ($ \.editors .height!)
     $ \.preloader 
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
@@ -276,46 +373,29 @@ resize-ui = ->
         ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#info .outer-width!) / 2)
     chart.update! if !!chart
 
-# compiles & executes livescript
-run-livescript = (context, result, livescript)-> 
-    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
-    try 
-        return [null, eval compile livescript, {bare: true}]
-    catch error 
-        return [error, null]
-
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
-        ..done (response)->
-            [err, document-state] = JSON.parse response
-            return callback err if !!err
-            callback null
+        ..done (response)-> callback null
         ..fail ({response-text})-> callback response-text
-
-# save document with query-id to local storage
-# putting the query-id makes it consistent with the db & makes setting up the history easier
-save-to-local-storage = (document-state)-> 
-    local-storage.set-item document-state.query-id, JSON.stringify document-state
-
-# converts an object to hash query string
-set-hash = (obj)->
-    window.location.hash = {} <<< get-hash! <<< obj  
-        |> obj-to-pairs 
-        |> map (.join \=)
-        |> (.join \&)
-        |> -> "#?#{it}"
 
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0
 
-# toggle between pre (for json & table) and svg (for charts)
-show-output-tag = (tag)->
-    $ \.output .children! .each -> 
-        $ @ .css \display, if ($ @ .prop \tagName).to-lower-case! == tag then "" else \none
-
 # a convenience function
 try-get = (value, default-value)-> if !!value then value else default-value
+
+# tries to parse json string, returns null on failure
+try-parse-json = (json-string)->
+
+    json = null
+
+    try
+        json = JSON.parse json-string
+    catch parse-exception
+        return null
+
+    json
 
 # update the editors, document.title etc using the document-state (persisted to local-storage and server)
 update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, ui}, update-ui = true)->
@@ -333,7 +413,9 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
     if update-ui
         if !!ui
             if !!ui.editors
-                ui.editors |> each ({id, height}) -> $ '#' + id .css \height, height
+                ui.editors 
+                    |> filter ({id}) -> id != \parameters-editor
+                    |> each ({id, height}) -> $ '#' + id .css \height, height
             if !!ui.left-editors-width
                 $ \.editors .css \width, ui.left-editors-width
         resize-ui!
@@ -341,14 +423,12 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
 
 # the state button is only visible when there is copy of the query on the server
 # the highlight on the state button indicates the client version differs the server version
-update-remote-state-button = (document-state)->
-    $ \#remote-state .toggle !!window.remote-document-state.query-id
-    $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state)
+update-remote-state-button = (document-state, remote-document-states)->
+    $ \#remote-state .toggle !!remote-document-states.0.query-id
+    $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state, remote-document-states)
 
 # on dom ready
 $ ->
-
-    show-output-tag \pre
 
     # setup the initial size
     $ \.editors .width window.inner-width * 0.4
@@ -389,31 +469,73 @@ $ ->
     presentation-editor := create-livescript-editor \presentation-editor
     parameters-editor := create-livescript-editor \parameters-editor
 
-    # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
-    ace-language-tools
-        ..add-completer {
-            get-completions: (, , , prefix, callback)->
-
-                # generated by utilities/mongo-keywords.js
-                mongo-keywords = <[$add $add-to-set $all-elements-true $and $any-element-true $avg $cmp $concat $cond $day-of-month $day-of-week $day-of-year $divide 
-                $eq $first $geo-near $group $gt $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month 
-                $multiply $ne $not $or $out $project $push $redact $second $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort 
-                $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
-                
-                callback null, convert-to-ace-keywords mongo-keywords, \mongo, prefix
-        }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context get-transformation-context!), \transformation, prefix }
-        ..add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (keywords-from-context get-presentation-context!), \presentation, prefix }
-
-    # auto complete for mongo collection properties
-    $.get "/keywords/queryContext", (collection-keywords)-> 
-        ace-language-tools.add-completer { get-completions: (, , , prefix, callback)-> callback null, convert-to-ace-keywords (JSON.parse collection-keywords), \collection, prefix }
-        
     # load document & update DOM, editors
-    query-id = get-query-id!
-    document-state = load-document-state query-id
-    history.replace-state document-state, document-state.name, "/query/#{query-id}#{get-query-parameters!}"
+    {query-id}? = get-identifiers window.location.href, window.remote-document-states
+
+    document-state = {}
+
+    if !!query-id
+        document-state = (client-storage.get-document-state query-id) or {} <<< window.remote-document-states.0
+        
+    else 
+        document-state = {} <<< window.remote-document-states.0 <<< {branch-id: \local, query-id: base62.encode Date.now!}            
+
+    history.replace-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
     update-dom-with-document-state document-state
+
+    # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
+    do ->
+
+        # returns dasherized collection of keywords for auto-completion
+        keywords-from-context = (context)->
+            context
+                |> obj-to-pairs 
+                |> map -> dasherize it.0
+
+        # takes a collection of keywords & maps them to {name, value, score, meta}
+        convert-to-ace-keywords = (keywords, meta, prefix)->
+            keywords
+                |> map -> {text: it, meta: meta}
+                |> filter -> it.text.index-of(prefix) == 0 
+                |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
+
+
+        # auto complete for mongo collection properties
+        {server-name, database, collection} = get-document-state!
+        query-context-keywords <- $.get "/keywords/queryContext"
+        collection-keywords <- $.get "/keywords/#{server-name}/#{database}/#collection"
+
+        query-editor-keywords = do ->
+            query-context-keywords ++
+            collection-keywords ++
+            # generated by utilities/mongo-keywords.js
+            <[$add $add-to-set $all-elements-true $and $any-element-true $avg $cmp $concat $cond $day-of-month $day-of-week $day-of-year $divide 
+            $eq $first $geo-near $group $gt $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month 
+            $multiply $ne $not $or $out $project $push $redact $second $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort 
+            $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
+
+        transformation-editor-keywords = do ->
+            [get-transformation-context!, (require \prelude-ls)] |> concat-map keywords-from-context
+
+        presentation-editor-keywords-d3 = keywords-from-context d3
+
+        presentation-editor-keywords = do ->            
+            [get-presentation-context!, (require \prelude-ls)] |> concat-map keywords-from-context
+
+        ace-language-tools.add-completer {
+            # :: Editor -> EditSession -> Range -> prefix :: String -> callback
+            get-completions: (editor, , , prefix, callback) ->
+                r = editor.getSelectionRange!.clone!
+                    ..set-start r.start.row, 0
+                text = editor.session.get-text-range r
+
+                [keywords, meta] = match editor.container.id
+                | \query-editor => [query-editor-keywords, \mongo]
+                | \transformation-editor => [transformation-editor-keywords, \transformation]
+                | \presentation-editor => [(if /.*d3\.($|[\w-]+)$/i.test text then presentation-editor-keywords-d3 else presentation-editor-keywords), \presentation]
+
+                callback null, (convert-to-ace-keywords keywords, meta, prefix)
+        }
 
     # update document title with query-name
     $ \#query-name .on \input, -> document.title = $ @ .val!
@@ -424,128 +546,134 @@ $ ->
         # do not save if we are displaying server side version
         return if ($ \#remote-state .attr \data-state) == \server
 
-        document-state = get-document-state query-id
-        save-to-local-storage document-state
-        update-remote-state-button document-state
+        document-state = get-document-state history.state
+
+        if has-document-changed document-state, window.remote-document-states
+            client-storage.save-document-state document-state.query-id, document-state
+
+        else
+            client-storage.delete-document-state document-state.query-id
+
+        update-remote-state-button document-state, window.remote-document-states
 
     document .add-event-listener \keydown, (_.debounce on-key-down, 500), true
     on-key-down!
 
     # save to server 
-    on-save = (e, document-state)->
+    save-state = (document-state)->
 
         # do not save if we are displaying server side version
         return if ($ \#remote-state .attr \data-state) == \server
 
-        [,save-function] = get-save-function document-state
+        [, save-function] = get-save-function document-state, window.remote-document-states
 
         # update the difference indicator between client & server code
-        save-function -> update-remote-state-button document-state
+        save-function (err)-> 
+            return alert err if !!err
+            update-remote-state-button history.state, window.remote-document-states
 
         # prevent default behaviour of displaying the save-dialog
         false
 
-    key 'command + s', (e)-> on-save e, get-document-state query-id
-    $ \#save .on \click, (e)-> on-save e, get-document-state query-id
+    key 'command + s', (e)-> save-state get-document-state history.state
+    $ \#save .on \click, (e)-> save-state get-document-state history.state
 
     # execute the query on button click or hot key (command + enter)
-    key 'command + enter', -> execute-query-and-display-results get-document-state query-id
-    $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state query-id
+    key 'command + enter', -> execute-query-and-display-results get-document-state history.state
+    $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state history.state
 
     # fork
     $ \#fork .on \click, ->
-        new-query-id = new Date!.get-time!
-        forked-document-state = get-document-state new-query-id
-        forked-document-state.query-name = "Copy of #{forked-document-state.query-name}"
-        local-storage.set-item new-query-id, JSON.stringify forked-document-state
-        window.open "/query/#{new-query-id}", \_blank
+        url = fork (get-document-state history.state), window.remote-document-states
+        window.open url, \_blank
 
-    # info
+    # # info
     $ \#info .on \click, -> $ \.details .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
 
-    # delete
-    $ \#delete .on \click, -> 
-        return if !confirm "Are you sure you want to delete this query?"
-        <- $.get "/delete/#{query-id}"
-        local-storage.remove-item "#{query-id}"
-        window.onbeforeunload = $.noop!
-        window.location.href = "list?_=#{new Date!.get-time!}"
-
-    # switch between client & server code
+    # # switch between client & server code
     $ \#remote-state .on \click, ->
         
         if ($ @ .attr \data-state) == \client
-            save-to-local-storage get-document-state!
             $ @ .attr \data-state, \server
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
-            update-dom-with-document-state window.remote-document-state, false
+            document-state = get-document-state history.state
+            client-storage.save-document-state document-state.query-id, document-state
+            update-dom-with-document-state do 
+                window.remote-document-states |> find (.query-id == history.state.query-id)
+                false
             
         else
             $ @ .attr \data-state, \client
-            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false
-            update-dom-with-document-state (JSON.parse local-storage.get-item query-id), false
+            [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false            
+            update-dom-with-document-state do
+                client-storage.get-document-state history.state.query-id
+                false
+
+
+    $ \#commit-tree .on \click, ->
+        window.open "/tree/#{history.state.query-id}"
+
+        # err, queries <- queries-in-same-tree history.state.query-id
+        # return console.log err if !!err
+        # draw-commit-tree do
+        #     (d3.select \.commit-tree)
+        #     600
+        #     240
+        #     queries
+        #     [
+        #         {
+        #             key: \queryId
+        #             name: \Id
+        #         }
+        #         {
+        #             key: \branchId 
+        #             name: \Branch
+        #         }
+        #         {
+        #             key: \queryName
+        #             name: \Name
+        #         }
+        #         {
+        #             key: \creationTime
+        #             name: \Date
+        #         }
+        #     ]
 
     $ \#multi-query .on \change, -> 
-        console.log \state, get-document-state!
-        update-remote-state-button get-document-state!
+        update-remote-state-button get-document-state history.state, window.remote-document-states
 
-    # reset local document state to match remote version
+    # # reset local document state to match remote version
     $ \#reset-to-server .on \click, ->
         return if !confirm "Are you sure you want to reset query to match server version?"
-        update-dom-with-document-state window.remote-document-state
-        update-remote-state-button window.remote-document-state
+        reset-document-sate history.state.query-id, window.remote-document-states
 
-    # prevent loss of work, does not guarantee the completion of async functions    
-    window.onbeforeunload = -> 
-        save-to-local-storage get-document-state query-id
-        [should-save] = get-save-function get-document-state query-id
-        return "You have NOT saved your query. Stop and save if your want to keep your query." if should-save
+    # # prevent loss of work, does not guarantee the completion of async functions    
+    window.onbeforeunload = ->
+        dirty-states = window.remote-document-states
+            |> filter ({query-id})->
+                document-state = client-storage.get-document-state query-id
+                !!document-state and has-document-changed document-state, window.remote-document-states
+        return "You have NOT saved your query. Stop and save if your want to keep your query." if dirty-states.length > 0 || (typeof window.remote-document-states.0.query-id == \undefined)
+
+    window.onpopstate = (event)->
+        local-state = client-storage.get-document-state event.state.query-id
+        document-state = if !!local-state then local-state else event.state
+        update-dom-with-document-state document-state
+        update-remote-state-button document-state, window.remote-document-states
 
     # query search
     $query-search-container = $ \.query-search-container .get 0
 
     key 'command + p, command + shift + p', (e)-> 
         React.render (query-search {
-            on-query-selected: ({query-id})-> 
-                window.open "/#{query-id}", \_blank
+            on-query-selected: ({branch-id, query-id})-> 
+                window.open "/branch/#{branch-id}/#{query-id}", \_blank
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
         false
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
 
 

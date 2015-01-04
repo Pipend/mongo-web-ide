@@ -16,15 +16,15 @@ module.exports.query-search = React.create-class do
                     $ul null,
                         [0 til queries.length] |> map ->
                             $li {} <<< if current-index == it then {class-name: \highlight} else {},
-                                $a {href: "http://localhost:3000/#{queries[it].query-id}"}, "#{queries[it].query-name} (#{queries[it].query-id})"
+                                $a {href: "http://localhost:3000/#{queries[it].branch-id}/#{queries[it].query-id}"}, "#{queries[it].query-name} (#{queries[it].query-id})"
 
     component-did-mount: -> 
         @on-input!
         $ @get-DOM-node! .find \input .focus!
 
-    on-input: (e)->        
+    on-input: (e)->
         self = @
-        (err, queries) <- search-queries-by-name (e?.current-target?.value or "")        
+        (err, queries) <- search-queries-by-name (e?.current-target?.value or "")
         return console.error err if !!err
         self.set-state {
             queries: queries |> sort-by (.match-index) 
@@ -45,6 +45,6 @@ module.exports.query-search = React.create-class do
             return false
 
         else if key-code == 13
-            @.props.on-query-selected @?.state?.queries?[@?.state?.current-index]            
+            @.props.on-query-selected @?.state?.queries?[@?.state?.current-index]
             return false
 

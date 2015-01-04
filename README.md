@@ -12,7 +12,16 @@
 ```
 config =
   env: \local
+
   all:
+    allow-disk-use: true
+    authentication:
+      strategy:
+        name: \github
+        options:
+          client-id: ""
+          client-secret: ""
+          organization-name: ""
     browserify-debug-mode: false
     connection-strings: [
       {
@@ -22,14 +31,10 @@ config =
       }
     ]
     default-connection-details: {
-      server-name: \local
-      database: \YourDBName
-      collection: \YourCollectionName
-    }
-    github: {
-      client-id: ""
-      client-secret: ""
-    }
+      server-name: \ubuntu
+      database: \MobiOne-events
+      collection: \events
+    }    
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
     mongoOptions:
       auto_reconnect: true
@@ -37,13 +42,19 @@ config =
         w:1
       server:
         socketOptions: 
-          keepAlive: 1
-    organization-name: ""
+          keepAlive: 1    
     port: 3000
     test-ips: <[127.0.0.1 localhost]>
-  release: {}
+
+  release: {}  
+
   preview: {}
+
   local:
+    authentication: 
+      strategy: 
+        name: \none
+    browserify-debug-mode: true    
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
 
 module.exports = config.all <<< config[config.env] <<< env: config.env
@@ -51,8 +62,6 @@ module.exports = config.all <<< config[config.env] <<< env: config.env
 
 * run the server
 ``` gulp ```
-
-
 
 ## Usage
 
@@ -66,8 +75,6 @@ $limit: 5
 ```
 
 * hit the execute button to be amazed!
-
-
 
 ## Sublime Stylus build command
 
@@ -84,3 +91,9 @@ $limit: 5
 ```
 
 * Save it as ``` Stylus.sublime-build ```
+
+
+
+
+
+
