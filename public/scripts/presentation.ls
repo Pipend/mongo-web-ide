@@ -14,6 +14,7 @@ require \LiveScript
 require \prelude-ls
 {map, Str} = require \prelude-ls
 {get-presentation-context} = require \./presentation-context.ls
+{get-transformation-context} = require \./transformation-context.ls
 
 # module-global variables  
 chart = null
@@ -24,7 +25,7 @@ presentation = ($ \#presentation .html!).replace /\t/g, " "
 try
 	eval compile do 
 		"""
-		window <<< (require 'prelude-ls') <<< get-presentation-context! <<< window.parameters
+		window <<< (require 'prelude-ls') <<< get-presentation-context! <<< get-transformation-context! <<< window.parameters
 		#{presentation}
 		"""
 		{bare: true}	
