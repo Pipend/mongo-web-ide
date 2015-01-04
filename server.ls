@@ -159,7 +159,7 @@ get-all-keys-recursively = (object, filter-function)->
         [key]
 
 get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json view, result"} <<< config.default-connection-details
 
 get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
@@ -602,10 +602,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         \public/presentation.html
         {
             transformed-result
-            presentation: """
-            draw = (view, result)->
-            #{presentation |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-            """
+            presentation
             parameters: req.query
         }
 
