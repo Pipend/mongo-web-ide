@@ -126,7 +126,7 @@ execute-query-and-display-results = do ->
 
         # parameters is livescript code (string)
         if !!parameters and parameters.trim!.length > 0
-            [err, parameters-object] = run-livescript {}, null, parameters
+            [err, parameters-object] = compile-and-execute-livescript parameters, {}
             console.log err if !!err
 
         parameters-object ?= {}
