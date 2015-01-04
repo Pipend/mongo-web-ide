@@ -107,22 +107,25 @@ execute-query-and-display-results = do ->
 
         (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
 
+        # hide the preloader
         busy := false
-
         $ \.preloader .hide!
 
-        # clear existing result
-        $ ".output > pre" .html ""
-        $ ".output > svg" .empty!
+        # clear existing result        
+        $ \.output .empty!
+
+        # dispatch a destroy event for presentation context to clear the resize event listeners
+        output = $ \.output .get 0
+        output.dispatch-event new Event \destroy
 
         # update the cache indicator
         $ \#cache .parent! .toggle-class "highlight green", cache
 
         display-error = (err)->
-            $ ".output > pre" .show!
-            $ ".output > svg" .hide!
-            $ ".output > pre" .html err
-
+            pre = $ "<pre/>"
+            pre.html err.to-string!
+            $ \.output .empty! .append pre
+            
         # display the new result    
         return display-error "ERROR IN THE QUERY: #{err}" if !!err
 
@@ -136,7 +139,7 @@ execute-query-and-display-results = do ->
         [err, result] = run-livescript (get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
         return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
 
-        [err, result] = run-livescript (get-presentation-context ($ ".output > pre" .get 0) <<< parameters-object, ($ ".output > svg" .get 0), chart), result, presentation
+        [err, result] = run-livescript get-presentation-context! <<< {view: ($ \.output .get 0)}, result, presentation
         return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
@@ -359,8 +362,11 @@ resize-editors = -> [query-editor, transformation-editor, presentation-editor] |
 resize-ui = ->
     $ \.output .width window.inner-width - ($ \.editors .width!) - ($ \.resize-handle.vertical .width!)
     $ \.output .height window.inner-height - ($ \.menu .height!)
-    $ ".output pre, .output svg" .width ($ \.output .width!)
-    $ ".output pre, .output svg" .height ($ \.output .height!)
+
+    # trigger resize event on the output element for the presentation context
+    output = $ \.output .get 0
+    output.dispatch-event new Event \resize
+
     $ \.resize-handle.vertical .height Math.max ($ \.output .height!), ($ \.editors .height!)
     $ \.preloader 
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
@@ -436,9 +442,6 @@ update-remote-state-button = (document-state, remote-document-states)->
 
 # on dom ready
 $ ->
-
-    $ ".output > pre" .show!
-    $ ".output > svg" .hide!
 
     # setup the initial size
     $ \.editors .width window.inner-width * 0.4
