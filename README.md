@@ -1,5 +1,7 @@
 ## TOC
 
+[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/Mobitrans/mongo-web-ide?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 ## Starting the server
 
 * install gulp: 
