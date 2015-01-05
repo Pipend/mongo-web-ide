@@ -100,6 +100,13 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 #{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
         """
 
+        run-latest-query = (branch-id, parameters, callback)->
+
+            err, document <- get-latest-query-in-branch query-database, branch-id
+            return callback err, null if !!err
+
+            execute-and-transform-query query-database, (document <<< {parameters}), callback
+
         [err, transpiled-code] = compile-and-execute-livescript do
             code
             {} <<< query-context <<< {
@@ -111,21 +118,13 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
                     execute-and-transform-query query-database, (document <<< {parameters}), callback
 
-                run-latest-query: (branch-id, parameters, callback)->
+                run-latest-query
 
-                    err, document <- get-latest-query-in-branch query-database, branch-id
-                    return callback err, null if !!err
-
-                    execute-and-transform-query query-database, (document <<< {parameters}), callback
-
-                run-queryb: (branch-id, parameters, callback)->
-
-                    err, document <- get-latest-query-in-branch query-database, branch-id
-                    return callback err, null if !!err
-
-                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+                # deprecated
+                run-queryb: run-latest-query
 
             }
+
         return callback err, null if !!err   
 
         try 
@@ -598,12 +597,14 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {presentation}:document?) <- get-query
+    (err, {parameters, presentation}:document?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if document == null
 
-    # parameters-object = compile-and-execute-livescript (parameters or ""), {}
-    updated-document = document <<< {cache, parameters: req.query}
+    [err, parameters-object] = compile-and-execute-livescript (parameters or ""), {}
+    return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
+
+    updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
 
     run = (func)->
         err, result <- func
