@@ -377,7 +377,7 @@ resize-ui = ->
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
         ..done (response)-> callback null
-        ..fail ({response-text})-> callback response-text
+        ..fail ({response-text})-> callback "SERVER ERROR: #{response-text}"
 
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0

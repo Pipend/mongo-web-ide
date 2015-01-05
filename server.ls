@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -210,7 +210,19 @@ get-query-by-id = (query-database, query-id, callback) !-->
             }
         ]
     return callback err, null if !!err
-    callback null, if !!results and results.length > 0 then results.0 else null
+    return callback null, results.0 if !!results?.0
+    callback "query not found #{query-id}", null
+
+parse-parameters = (query-value, user-defined-value)->
+    match typeof! user-defined-value
+    | \Object =>
+        query-value
+            |> obj-to-pairs
+            |> map ([key, value])-> [key, parse-parameters value, user-defined-value[key]]
+            |> pairs-to-obj
+    | \Array => query-value |> map -> parse-parameters it, user-defined-value.0
+    | \Number => (if user-defined-value % 1 == 0 then parse-int else parse-float) query-value
+    | otherwise => query-value
 
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
@@ -329,7 +341,7 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 
     {query-id} = req.params
 
-    err, {status}:remote-document-state <- get-query-by-id query-database, query-id
+    err, {status}:remote-document-state? <- get-query-by-id query-database, query-id
     return die res, err if !!err
     return die res, "query deleted" if !status
 
@@ -582,9 +594,11 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {presentation}:document?) <- get-query
+    (err, {presentation, parameters}:document?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if document == null
+
+    parameters-object = compile-and-execute-livescript (parameters or ""), {}
 
     updated-document = document <<< {cache, parameters: req.query}
 
