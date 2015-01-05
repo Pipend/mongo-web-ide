@@ -84,7 +84,7 @@ execute-query = (query-database, {server-name, database, collection, multi-query
         return callback err, null if !!err
 
     # return cached result if any
-    key = md5 (query + "\n" + JSON.stringify parameters)    
+    key = md5 "#{query}, #{server-name}, #{database}, #{collection}, #{JSON.stringify parameters}, #{multi-query}"
     return callback null, query-cache[key] if cache and !!query-cache[key]    
 
     # context properties that are same for different query types
@@ -102,7 +102,7 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
         [err, transpiled-code] = compile-and-execute-livescript do
             code
-            query-context <<< {
+            {} <<< query-context <<< {
 
                 run-query: (query-id, parameters, callback)-> 
 
@@ -128,10 +128,14 @@ execute-query = (query-database, {server-name, database, collection, multi-query
             }
         return callback err, null if !!err   
 
-        err, result <- transpiled-code!
-        return callback err, null if !!err
+        try 
+            err, result <- transpiled-code!
+            return callback err, null if !!err
+            callback null, query-cache[key] = result
 
-        callback null, query-cache[key] = result          
+        catch err
+            callback err, null
+
 
     else
 
@@ -594,12 +598,11 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {presentation, parameters}:document?) <- get-query
+    (err, {presentation}:document?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if document == null
 
-    parameters-object = compile-and-execute-livescript (parameters or ""), {}
-
+    # parameters-object = compile-and-execute-livescript (parameters or ""), {}
     updated-document = document <<< {cache, parameters: req.query}
 
     run = (func)->
