@@ -1,7 +1,7 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, drop, each, filter, map, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{concat-map, drop, each, filter, map, obj-to-pairs, sort, sum, tail, take, unique, id, Obj} = require \prelude-ls
 
 module.exports.get-presentation-context = ->
 
@@ -48,12 +48,12 @@ module.exports.get-presentation-context = ->
 
         layout-vertical: (view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
 
-        json: (view, result)!-> 
+        json: (view, result)!--> 
             pre = $ "<pre/>"
                 ..html JSON.stringify result, null, 4
             ($ view).append pre
 
-        table: (view, result)!-> 
+        table: (view, result)!--> 
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
@@ -81,7 +81,7 @@ module.exports.get-presentation-context = ->
                     ..text (.1)        
         
 
-        plot-histogram: (view, result)!->
+        plot-histogram: (view, result)!-->
 
             <- nv.add-graph
 
