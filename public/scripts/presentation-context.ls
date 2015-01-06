@@ -1,7 +1,7 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, drop, each, filter, map, obj-to-pairs, sort, sum, tail, take, unique, id, Obj} = require \prelude-ls
+{Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 module.exports.get-presentation-context = ->
 
@@ -40,6 +40,10 @@ module.exports.get-presentation-context = ->
                         width: if direction == \horizontal then "#{size * 100}%" else "100%"
                         height: if direction == \horizontal then "100%" else "#{size * 100}%"
                     }
+
+
+    plot-chart = (view, result, chart)->
+        d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
 
     # all functions defined here are accessibly by the presentation code
     {        
@@ -89,7 +93,7 @@ module.exports.get-presentation-context = ->
                 .x (.label)
                 .y (.value)
 
-            d3.select view .append \svg .datum result .call chart
+            plot-chart view, result, chart
             
             chart.update!
 
@@ -114,7 +118,7 @@ module.exports.get-presentation-context = ->
                 ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
                 ..y-axis.tick-format y-axis-format
             
-            d3.select view .append \svg .datum result .call chart
+            plot-chart view, result, chart
             
             chart.update!
             
@@ -138,7 +142,7 @@ module.exports.get-presentation-context = ->
                 ..x-axis.tick-format x-axis-format
                 ..y-axis.tick-format y-axis-format
 
-            d3.select view .append \svg .datum result .call chart
+            plot-chart view, result, chart
             
             chart.update!            
 
@@ -151,9 +155,35 @@ module.exports.get-presentation-context = ->
                 .y (.1)
             chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
             
-            d3.select view .append \svg .datum result .call chart
+            plot-chart view, result, chart
 
             chart.update!
+
+
+        fill-intervals: (v)->
+
+            gcd = (a, b) -> match b
+                | 0 => a
+                | _ => gcd b, (a % b)
+
+            x-scale = v |> map (.0)
+            x-step = x-scale |> foldr1 gcd
+            max-x-scale = maximum x-scale
+            min-x-scale = minimum x-scale
+            [0 to (max-x-scale - min-x-scale) / x-step]
+                |> map (i)->
+                    x-value = min-x-scale + x-step * i
+                    [, y-value]? = v |> find ([x])-> x == x-value
+                    [x-value, y-value or 0]
+            
+
+        trendline: (v, sample-size)->
+            [0 to v.length - sample-size]
+                |> map (i)->
+                    new-y = [i til i + sample-size] 
+                        |> map -> v[it].1
+                        |> average
+                    [v[i + sample-size - 1].0, new-y]
 
     }    
 
