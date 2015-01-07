@@ -45,6 +45,24 @@ module.exports.get-presentation-context = ->
     plot-chart = (view, result, chart)->
         d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
 
+    # [[key, val]] -> [[key, val]]
+    fill-intervals = (v, default-value = 0) ->
+
+        gcd = (a, b) -> match b
+            | 0 => a
+            | _ => gcd b, (a % b)
+
+        x-scale = v |> map (.0)
+        x-step = x-scale |> foldr1 gcd
+        max-x-scale = maximum x-scale
+        min-x-scale = minimum x-scale
+        [0 to (max-x-scale - min-x-scale) / x-step]
+            |> map (i)->
+                x-value = min-x-scale + x-step * i
+                [, y-value]? = v |> find ([x])-> x == x-value
+                [x-value, y-value or default-value]
+        
+
     # all functions defined here are accessibly by the presentation code
     {        
 
@@ -146,9 +164,12 @@ module.exports.get-presentation-context = ->
             
             chart.update!            
 
-        plot-timeseries: (view, result)!->            
+        plot-timeseries: (view, result, options = {fill-intervals: true}) !->
 
             <- nv.add-graph
+
+            if options.fill-intervals
+                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
 
             chart = nv.models.line-chart!
                 .x (.0)
@@ -161,22 +182,7 @@ module.exports.get-presentation-context = ->
 
 
         # [[key, val]] -> [[key, val]]
-        fill-intervals: (v, default-value = 0) ->
-
-            gcd = (a, b) -> match b
-                | 0 => a
-                | _ => gcd b, (a % b)
-
-            x-scale = v |> map (.0)
-            x-step = x-scale |> foldr1 gcd
-            max-x-scale = maximum x-scale
-            min-x-scale = minimum x-scale
-            [0 to (max-x-scale - min-x-scale) / x-step]
-                |> map (i)->
-                    x-value = min-x-scale + x-step * i
-                    [, y-value]? = v |> find ([x])-> x == x-value
-                    [x-value, y-value or default-value]
-            
+        fill-intervals
 
         trendline: (v, sample-size)->
             [0 to v.length - sample-size]
@@ -187,9 +193,3 @@ module.exports.get-presentation-context = ->
                     [v[i + sample-size - 1].0, new-y]
 
     }    
-
-
-
-
-
-
