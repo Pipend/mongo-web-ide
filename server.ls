@@ -187,6 +187,7 @@ get-query-context = ->
     parse-date = (s) -> new Date s
     to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
     today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
+    {object-id-from-date, date-from-object-id} = require \./public/scripts/utils.ls
     {
 
         # dependent on mongo operations
@@ -194,11 +195,14 @@ get-query-context = ->
         day-to-timestamp: (field) -> $multiply: [field, 86400000]
         object-id: ObjectID
         timestamp-to-day: bucketize 86400000
+        object-id-from-date: ObjectID . object-id-from-date 
 
         # independent of any mongo operations
         parse-date
         to-timestamp
+        get-today: today
         today: today!
+        date-from-object-id
 
     }
 

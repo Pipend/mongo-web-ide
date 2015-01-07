@@ -160,7 +160,8 @@ module.exports.get-presentation-context = ->
             chart.update!
 
 
-        fill-intervals: (v)->
+        # [[key, val]] -> [[key, val]]
+        fill-intervals: (v, default-value = 0) ->
 
             gcd = (a, b) -> match b
                 | 0 => a
@@ -174,7 +175,7 @@ module.exports.get-presentation-context = ->
                 |> map (i)->
                     x-value = min-x-scale + x-step * i
                     [, y-value]? = v |> find ([x])-> x == x-value
-                    [x-value, y-value or 0]
+                    [x-value, y-value or default-value]
             
 
         trendline: (v, sample-size)->
