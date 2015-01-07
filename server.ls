@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -236,6 +236,9 @@ parse-parameters = (query-value, user-defined-value)->
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
 
+get-ip = (req)->
+    (req?.query?['x-ip'] || req?.headers?['x-forwarded-for'] || req?.connection?.remoteAddress || req?.socket?.remoteAddress || req?.connection?.socket?.remoteAddress)?.split(":")?[0]
+
 # create & setup express app
 app = express!
     ..set \views, __dirname + \/
@@ -257,8 +260,12 @@ app = express!
     ..use passport.session!
     ..use (req, res, next)->
 
+        ip = get-ip req
+        Netmask = require \netmask .Netmask
+        whites = config.authentication.white-list ? [] |> map -> new Netmask it
+
         # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id or (if config.authentication.strategy.name == \none then 1 else null)
+        user-id = req?.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy.name == \none then 1 else null)
         req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         # get the user object from the session & store it in the request
