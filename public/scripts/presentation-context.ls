@@ -164,7 +164,7 @@ module.exports.get-presentation-context = ->
             
             chart.update!            
 
-        plot-timeseries: (view, result, options = {fill-intervals: true}) !->
+        plot-timeseries: (view, result, options = {fill-intervals: true}, callback = $.noop) !->
 
             <- nv.add-graph
 
@@ -174,8 +174,38 @@ module.exports.get-presentation-context = ->
             chart = nv.models.line-chart!
                 .x (.0)
                 .y (.1)
-            chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            chart
+                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
             
+            plot-chart view, result, chart
+
+            chart.update!
+
+            callback chart
+
+
+        plot-line-bar: (view, result, {
+            fill-intervals = true
+            y1-axis-format = (d3.format ',f')
+            y2-axis-format = (d3.format '.02f')
+
+        }) !->
+            <- nv.add-graph
+
+            if options.fill-intervals
+                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+
+            chart = nv.models.line-plus-bar-chart!
+                .x (, i) -> i
+                .y (.1)
+            chart
+                ..x-axis.tick-format (d) -> 
+                    timestamp = data.0.values[d] and data.0.values[d].0 or 0
+                    (d3.time.format \%x) new Date timestamp
+                ..y1-axis.tick-format y1-axis-format
+                ..y2-axis.tick-format y2-axis-format
+                ..bars.force-y [0]
+
             plot-chart view, result, chart
 
             chart.update!
