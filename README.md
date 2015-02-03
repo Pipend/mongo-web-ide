@@ -16,6 +16,7 @@ config =
   all:
     allow-disk-use: true
     authentication:
+      white-list: <[127.0.0.0/31 192.168.0.0/16]>
       strategy:
         name: \github
         options:
@@ -95,5 +96,14 @@ $limit: 5
 
 
 
+## Features
 
+### Aggregation Framework
 
+### Transformation and Presentation
+
+### REST API
+
+### Version Management
+
+## Security

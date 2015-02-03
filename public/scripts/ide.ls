@@ -14,15 +14,10 @@ ace-language-tools = require \brace/ext/language_tools
 window.d3 = require \d3-browserify
 require \nvd3 
 
-# the first require is used by browserify to import the LiveScript module
-# the second require is defined in the LiveScript module and exports the object
-require \LiveScript
-{compile} = require \LiveScript
-
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{concat-map, dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type} = require \prelude-ls
+{concat-map, dasherize, filter, find, find-index, fold, keys, map, obj-to-pairs, Obj, id, pairs-to-obj, sort-by, unique-by, each, all, any, is-type, Str} = require \prelude-ls
 
 # normal dependencies
 base62 = require \base62
@@ -37,6 +32,7 @@ $ = require \jquery-browserify
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
+{compile-and-execute-livescript} = require \./utils.ls
 
 # module-global variables  
 chart = null
@@ -56,7 +52,7 @@ create-livescript-editor = (element-id)->
             range = editor.getSelectionRange!.clone!
             range.setStart range.start.row, 0
             line = editor.session.getTextRange range
-            if command.name == "insertstring" and (/^\$\w*$/.test args or /.*(\.|\s+(\w|\$|\"|\'|\(|\[|\{))$/.test line)
+            if command.name == "insertstring" and (/^\$[a-zA-Z]*$/.test args or /.*(\.|\s+[a-zA-Z\$\"\'\(\[\{])$/.test line)
                 editor.execCommand \startAutocomplete
 
 # makes a POST request to the server and returns the result of the mongo query
@@ -99,9 +95,9 @@ execute-query-and-display-results = do ->
         busy := true
 
         # show preloader
-        $ \.preloader .show!        
+        $ \.preloader .show!
 
-        # query, transform & plot         
+        # query, transform & plot
         cache = should-cache!
 
         (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
@@ -110,7 +106,7 @@ execute-query-and-display-results = do ->
         busy := false
         $ \.preloader .hide!
 
-        # clear existing result        
+        # clear existing result
         $ \.output .empty!
 
         # dispatch a destroy event for presentation context to clear the resize event listeners
@@ -130,15 +126,15 @@ execute-query-and-display-results = do ->
 
         # parameters is livescript code (string)
         if !!parameters and parameters.trim!.length > 0
-            [err, parameters-object] = run-livescript {}, null, parameters
+            [err, parameters-object] = compile-and-execute-livescript parameters, {}
             console.log err if !!err
 
         parameters-object ?= {}
 
-        [err, result] = run-livescript (get-transformation-context! <<< parameters-object), (JSON.parse result), transformation
-        return display-error "ERRPR IN THE TRANSFORMATION CODE: #{err}" if !!err
+        [err, result] = compile-and-execute-livescript transformation, {result: JSON.parse result} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls)
+        return display-error "ERROR IN THE TRANSFORMATION CODE: #{err}" if !!err
 
-        [err, result] = run-livescript get-presentation-context! <<< {view: ($ \.output .get 0)}, result, presentation
+        [err, result] = compile-and-execute-livescript presentation, {result, d3, $, view: ($ \.output .get 0)} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
         return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
 
 # if the local state has diverged from remote state, creates a new tree
@@ -338,12 +334,6 @@ omit = (obj, keys)->
         |> filter ([key, ...]) -> (keys.index-of key) == -1
         |> pairs-to-obj
 
-# returns dasherized collection of keywords for auto-completion
-keywords-from-context = (context)->
-    context
-        |> obj-to-pairs 
-        |> map -> dasherize it.0
-
 # utility function, converts a string to boolean
 parse-bool = -> it == \true
 
@@ -377,19 +367,11 @@ resize-ui = ->
         ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#info .outer-width!) / 2)
     chart.update! if !!chart
 
-# compiles & executes livescript
-run-livescript = (context, result, livescript)-> 
-    livescript = "window <<< require 'prelude-ls' \nwindow <<< context \n" + livescript       
-    try 
-        return [null, eval compile livescript, {bare: true}]
-    catch error 
-        return [error, null]
-
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
         ..done (response)-> callback null
-        ..fail ({response-text})-> callback response-text
+        ..fail ({response-text})-> callback "SERVER ERROR: #{response-text}"
 
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0
@@ -512,12 +494,15 @@ $ ->
                 |> map -> {name: it.text, value: it.text, score: 0, meta: it.meta}
 
 
+        alphabet = [(String.fromCharCode i) for i in [65 to 65+25] ++ [97 to 97+25] ]
+
         # auto complete for mongo collection properties
         {server-name, database, collection} = get-document-state!
         query-context-keywords <- $.get "/keywords/queryContext"
         collection-keywords <- $.get "/keywords/#{server-name}/#{database}/#collection"
 
         query-editor-keywords = do ->
+            alphabet ++
             query-context-keywords ++
             collection-keywords ++
             # generated by utilities/mongo-keywords.js
@@ -527,12 +512,14 @@ $ ->
             $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
 
         transformation-editor-keywords = do ->
-            [get-transformation-context!, (require \prelude-ls)] |> concat-map keywords-from-context
+            ([get-transformation-context!, (require \prelude-ls)] |> concat-map keywords-from-context) ++ alphabet
 
         presentation-editor-keywords-d3 = keywords-from-context d3
 
-        presentation-editor-keywords = do ->
-            (keywords-from-context get-presentation-context!)
+        presentation-editor-keywords = do ->            
+            ([get-presentation-context!, (require \prelude-ls)] |> concat-map keywords-from-context) ++ alphabet
+
+        console.log presentation-editor-keywords
 
         ace-language-tools.add-completer {
             # :: Editor -> EditSession -> Range -> prefix :: String -> callback
@@ -545,6 +532,7 @@ $ ->
                 | \query-editor => [query-editor-keywords, \mongo]
                 | \transformation-editor => [transformation-editor-keywords, \transformation]
                 | \presentation-editor => [(if /.*d3\.($|[\w-]+)$/i.test text then presentation-editor-keywords-d3 else presentation-editor-keywords), \presentation]
+                | _ => [alphabet, editor.container.id]
 
                 callback null, (convert-to-ace-keywords keywords, meta, prefix)
         }

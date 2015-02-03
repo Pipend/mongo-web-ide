@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, Str, unique} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -84,7 +84,7 @@ execute-query = (query-database, {server-name, database, collection, multi-query
         return callback err, null if !!err
 
     # return cached result if any
-    key = md5 (query + "\n" + JSON.stringify parameters)    
+    key = md5 "#{query}, #{server-name}, #{database}, #{collection}, #{JSON.stringify parameters}, #{multi-query}"
     return callback null, query-cache[key] if cache and !!query-cache[key]    
 
     # context properties that are same for different query types
@@ -100,9 +100,16 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 #{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
         """
 
+        run-latest-query = (branch-id, parameters, callback)->
+
+            err, document <- get-latest-query-in-branch query-database, branch-id
+            return callback err, null if !!err
+
+            execute-and-transform-query query-database, (document <<< {parameters}), callback
+
         [err, transpiled-code] = compile-and-execute-livescript do
             code
-            query-context <<< {
+            {} <<< query-context <<< {
 
                 run-query: (query-id, parameters, callback)-> 
 
@@ -111,27 +118,23 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
                     execute-and-transform-query query-database, (document <<< {parameters}), callback
 
-                run-latest-query: (branch-id, parameters, callback)->
+                run-latest-query
 
-                    err, document <- get-latest-query-in-branch query-database, branch-id
-                    return callback err, null if !!err
-
-                    execute-and-transform-query query-database, (document <<< {parameters}), callback
-
-                run-queryb: (branch-id, parameters, callback)->
-
-                    err, document <- get-latest-query-in-branch query-database, branch-id
-                    return callback err, null if !!err
-
-                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+                # deprecated
+                run-queryb: run-latest-query
 
             }
+
         return callback err, null if !!err   
 
-        err, result <- transpiled-code!
-        return callback err, null if !!err
+        try 
+            err, result <- transpiled-code!
+            return callback err, null if !!err
+            callback null, query-cache[key] = result
 
-        callback null, query-cache[key] = result          
+        catch err
+            callback err, null
+
 
     else
 
@@ -159,7 +162,7 @@ get-all-keys-recursively = (object, filter-function)->
         [key]
 
 get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json result"} <<< config.default-connection-details
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json view, result"} <<< config.default-connection-details
 
 get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
@@ -184,6 +187,7 @@ get-query-context = ->
     parse-date = (s) -> new Date s
     to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
     today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
+    {object-id-from-date, date-from-object-id} = require \./public/scripts/utils.ls
     {
 
         # dependent on mongo operations
@@ -191,11 +195,14 @@ get-query-context = ->
         day-to-timestamp: (field) -> $multiply: [field, 86400000]
         object-id: ObjectID
         timestamp-to-day: bucketize 86400000
+        object-id-from-date: ObjectID . object-id-from-date 
 
         # independent of any mongo operations
         parse-date
         to-timestamp
+        get-today: today
         today: today!
+        date-from-object-id
 
     }
 
@@ -210,12 +217,27 @@ get-query-by-id = (query-database, query-id, callback) !-->
             }
         ]
     return callback err, null if !!err
-    callback null, if !!results and results.length > 0 then results.0 else null
+    return callback null, results.0 if !!results?.0
+    callback "query not found #{query-id}", null
+
+parse-parameters = (query-value, user-defined-value)->
+    match typeof! user-defined-value
+    | \Object =>
+        query-value
+            |> obj-to-pairs
+            |> map ([key, value])-> [key, parse-parameters value, user-defined-value[key]]
+            |> pairs-to-obj
+    | \Array => query-value |> map -> parse-parameters it, user-defined-value.0
+    | \Number => (if user-defined-value % 1 == 0 then parse-int else parse-float) query-value
+    | otherwise => query-value
 
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
 console.log "successfully connected to #{config.mongo}"
+
+get-ip = (req)->
+    (req?.query?['x-ip'] || req?.headers?['x-forwarded-for'] || req?.connection?.remoteAddress || req?.socket?.remoteAddress || req?.connection?.socket?.remoteAddress)?.split(":")?[0]
 
 # create & setup express app
 app = express!
@@ -238,8 +260,12 @@ app = express!
     ..use passport.session!
     ..use (req, res, next)->
 
+        ip = get-ip req
+        Netmask = require \netmask .Netmask
+        whites = config.authentication.white-list ? [] |> map -> new Netmask it
+
         # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id or (if config.authentication.strategy.name == \none then 1 else null)
+        user-id = req?.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy.name == \none then 1 else null)
         req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         # get the user object from the session & store it in the request
@@ -329,7 +355,7 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
 
     {query-id} = req.params
 
-    err, {status}:remote-document-state <- get-query-by-id query-database, query-id
+    err, {status}:remote-document-state? <- get-query-by-id query-database, query-id
     return die res, err if !!err
     return die res, "query deleted" if !status
 
@@ -582,11 +608,14 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
         (callback)-> callback "branch-id & query-id are undefined", null
 
-    (err, {presentation}:document?) <- get-query
+    (err, {parameters, presentation}:document?) <- get-query
     return die res, err if !!err
     return die res, "unable to find query: #{req.params.query-id}" if document == null
 
-    updated-document = document <<< {cache, parameters: req.query}
+    [err, parameters-object] = compile-and-execute-livescript (parameters or ""), {}
+    return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
+
+    updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
 
     run = (func)->
         err, result <- func
@@ -602,10 +631,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         \public/presentation.html
         {
             transformed-result
-            presentation: """
-            draw = (view, result)->
-            #{presentation |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-            """
+            presentation
             parameters: req.query
         }
 
