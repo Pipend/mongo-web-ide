@@ -141,8 +141,10 @@ module.exports.get-presentation-context = ->
             chart.update!
             
 
-        plot-scatter: (view, result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')})!->
+        plot-scatter: (view, result, uoptions, callback = $.noop)!->
 
+            options = {tooltip: null, x-axis-format: (d3.format '.02f'), y-axis-format: (d3.format '.02f'), show-legend: true} <<< uoptions
+            console.log options
             <- nv.add-graph
 
             chart = nv.models.scatter-chart!
@@ -155,14 +157,18 @@ module.exports.get-presentation-context = ->
                 ..scatter.only-circles false
 
                 ..tooltip-content (key, , , {point}) -> 
-                    (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+                    (options.tooltip or (key) -> '<h3>' + key + '</h3>') key, point
 
-                ..x-axis.tick-format x-axis-format
-                ..y-axis.tick-format y-axis-format
+                ..x-axis.tick-format options.x-axis-format
+                ..y-axis.tick-format options.y-axis-format
 
+            chart.show-legend !!options.show-legend
             plot-chart view, result, chart
             
-            chart.update!            
+            
+            chart.update!
+
+            callback chart            
 
         plot-timeseries: (view, result, options = {fill-intervals: true}, callback = $.noop) !->
 
