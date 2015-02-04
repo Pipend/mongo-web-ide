@@ -11,6 +11,12 @@ class Plottable
 plot = (p, {result, view}) -->
   p.plotter {result, view}
 
+plottablify = (f) ->
+    new Plottable do
+        aid
+        {}
+        (continuation, options, {result, view}) !-->
+            f {result, view}
 
 with-options = (p, o) ->
   new Plottable do
@@ -44,51 +50,71 @@ more = (p, c) ->
     p._plotter
  
 
+project = (f, p) -->
+  new Plottable do
+    (chart, callback) -> callback null, chart # noop continuation
+    {} # options
+    (continuation, options, {result, view}) !-->  # duck
+      p.plotter {view, result: (f result)}
+
+
+cell = (plotter) ->
+  {plotter}
+
+
+scell = (size, plotter) ->
+  {size, plotter}
+
 # async id
 aid = (chart, callback) -> callback null, chart
 
 
 module.exports.get-presentation-context = ->
 
-    layout = (plotters) -> new Plottable do
-        aid
-        {direction: 'vertical'}
-        (continuation, {direction}, {result, view}) !-->
+    layout = (direction, cells) --> 
+        if "Array" != typeof! cells
+            cells := drop 1, [].slice.call arguments
 
-            functions = drop 2, Array.prototype.slice.call arguments            
+        new Plottable do
+            aid
+            {}
+            (continuation, options, {result, view}) !-->
+                child-view-sizes = cells |> map ({size, plotter}) ->
+                        child-view = document.create-element \div
+                            ..style <<< {                            
+                                overflow: \auto
+                                position: \absolute                            
+                            }
+                            ..class-name = direction
+                        view.append-child child-view
+                        plot plotter, {view: child-view, result}
+                        {size, child-view}
 
-            child-views = [0  til functions.length]
-                |> map (i)->
-                    child-view = document.create-element \div
-                        ..style <<< {                            
-                            overflow: \auto
-                            position: \absolute                            
+                sizes = child-view-sizes 
+                    |> map (.size)
+                    |> filter (size) -> !!size and typeof! size == \Number
+
+                default-size = (1 - (sum sizes)) / (child-view-sizes.length - sizes.length)
+
+                child-view-sizes = child-view-sizes |> map ({child-view, size})-> {child-view, size: (size or default-size)}
+                    
+                [0 til child-view-sizes.length]
+                    |> each (i)->
+                        {child-view, size} = child-view-sizes[i]                    
+                        position = take i, child-view-sizes
+                            |> map ({size})-> size
+                            |> sum
+                        child-view.style <<< {
+                            left: if direction == \horizontal then "#{position * 100}%" else "0%"
+                            top: if direction == \horizontal then "0%" else "#{position * 100}%"
+                            width: if direction == \horizontal then "#{size * 100}%" else "100%"
+                            height: if direction == \horizontal then "100%" else "#{size * 100}%"
                         }
-                        ..class-name = direction
-                    view.append-child child-view
-                    [child-view, functions[i](child-view)]
 
-            sizes = child-views 
-                |> filter ([, size])-> !!size and typeof size == \number
-                |> map ([, size])-> size                 
-
-            default-size = (1 - (sum sizes)) / (child-views.length - sizes.length)
-
-            child-views-with-size = child-views |> map ([child-view, size])-> [child-view, (size or default-size)]
-                
-            [0 til child-views-with-size.length]
-                |> each (i)->
-                    [child-view, size] = child-views-with-size[i]                    
-                    position = take i, child-views-with-size
-                        |> map ([, size])-> size
-                        |> sum
-                    child-view.style <<< {
-                        left: if direction == \horizontal then "#{position * 100}%" else "0%"
-                        top: if direction == \horizontal then "0%" else "#{position * 100}%"
-                        width: if direction == \horizontal then "#{size * 100}%" else "100%"
-                        height: if direction == \horizontal then "100%" else "#{size * 100}%"
-                    }
-
+    json = ({view, result}) !-> 
+        pre = $ "<pre/>"
+            ..html JSON.stringify result, null, 4
+        ($ view).append pre
 
     plot-chart = (view, result, chart)->
         d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
@@ -111,19 +137,28 @@ module.exports.get-presentation-context = ->
                 [x-value, y-value or default-value]
         
 
+
+
     # all functions defined here are accessibly by the presentation code
-    {        
+    presentaion-context = {        
 
-        layout-horizontal: (view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+        plottablify
 
-        layout-vertical: (view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
+        project
 
-        json: ({view, result}) !-> 
-            pre = $ "<pre/>"
-                ..html JSON.stringify result, null, 4
-            ($ view).append pre
+        cell
+        
+        scell
 
-        table: (view, result)!--> 
+        layout-horizontal: layout \horizontal #(view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+
+        layout-vertical: layout \vertical #(view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
+
+        json
+
+        pjson: plottablify json
+
+        table: plottablify ({view, result}) !--> 
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
@@ -166,7 +201,7 @@ module.exports.get-presentation-context = ->
 
         plot-stacked-area: new Plottable do
             aid
-            {y-axis-format = (d3.format ',')}
+            {y-axis-format: (d3.format ',')}
             (continuation, options, {result, view}) !-->
 
                 <- nv.add-graph 
