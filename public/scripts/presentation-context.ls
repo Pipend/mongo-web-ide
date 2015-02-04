@@ -4,25 +4,23 @@ require \prelude-ls
 {Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 class Plottable
-  (@continuations, @options, @_plotter) ->
-  plotter: ({result, view}) ~>
-    @_plotter @continuations, @options, {result, view}
+    (@_plotter, @options = {}, @continuations = (chart, callback) -> callback null, chart) ->
+    plotter: ({result, view}) ~>
+        @_plotter {result, view}, @options, @continuations
 
 plot = (p, {result, view}) -->
   p.plotter {result, view}
 
+
 plottablify = (f) ->
-    new Plottable do
-        aid
-        {}
-        (continuation, options, {result, view}) !-->
-            f {result, view}
+    new Plottable ({result, view}, options, continuation) !-->
+        f {result, view}
 
 with-options = (p, o) ->
   new Plottable do
-    p.continuations
-    {} <<< p.options <<< o
     p._plotter
+    {} <<< p.options <<< o
+    p.continuations
  
  
 acompose = (f, g) --> (chart, callback) ->
@@ -33,28 +31,26 @@ acompose = (f, g) --> (chart, callback) ->
  
 amore = (p, c) ->
   new Plottable do
-    p.continuations `acompose` c
-    {} <<< p.options
     p._plotter
+    {} <<< p.options
+    p.continuations `acompose` c
  
  
 more = (p, c) ->
   new Plottable do
+    p._plotter
+    {} <<< p.options
     p.continuations `acompose` (chart, callback) -> 
       try 
         cchart = c chart
       catch ex
         return callback ex, null
       callback null, cchart
-    {} <<< p.options
-    p._plotter
  
 
 project = (f, p) -->
   new Plottable do
-    (chart, callback) -> callback null, chart # noop continuation
-    {} # options
-    (continuation, options, {result, view}) !-->  # duck
+    ({result, view}, options, continuation) !-->  # duck
       p.plotter {view, result: (f result)}
 
 
@@ -75,41 +71,38 @@ module.exports.get-presentation-context = ->
         if "Array" != typeof! cells
             cells := drop 1, [].slice.call arguments
 
-        new Plottable do
-            aid
-            {}
-            (continuation, options, {result, view}) !-->
-                child-view-sizes = cells |> map ({size, plotter}) ->
-                        child-view = document.create-element \div
-                            ..style <<< {                            
-                                overflow: \auto
-                                position: \absolute                            
-                            }
-                            ..class-name = direction
-                        view.append-child child-view
-                        plot plotter, {view: child-view, result}
-                        {size, child-view}
-
-                sizes = child-view-sizes 
-                    |> map (.size)
-                    |> filter (size) -> !!size and typeof! size == \Number
-
-                default-size = (1 - (sum sizes)) / (child-view-sizes.length - sizes.length)
-
-                child-view-sizes = child-view-sizes |> map ({child-view, size})-> {child-view, size: (size or default-size)}
-                    
-                [0 til child-view-sizes.length]
-                    |> each (i)->
-                        {child-view, size} = child-view-sizes[i]                    
-                        position = take i, child-view-sizes
-                            |> map ({size})-> size
-                            |> sum
-                        child-view.style <<< {
-                            left: if direction == \horizontal then "#{position * 100}%" else "0%"
-                            top: if direction == \horizontal then "0%" else "#{position * 100}%"
-                            width: if direction == \horizontal then "#{size * 100}%" else "100%"
-                            height: if direction == \horizontal then "100%" else "#{size * 100}%"
+        new Plottable ({result, view}, options, continuation) !-->
+            child-view-sizes = cells |> map ({size, plotter}) ->
+                    child-view = document.create-element \div
+                        ..style <<< {                            
+                            overflow: \auto
+                            position: \absolute                            
                         }
+                        ..class-name = direction
+                    view.append-child child-view
+                    plot plotter, {view: child-view, result}
+                    {size, child-view}
+
+            sizes = child-view-sizes 
+                |> map (.size)
+                |> filter (size) -> !!size and typeof! size == \Number
+
+            default-size = (1 - (sum sizes)) / (child-view-sizes.length - sizes.length)
+
+            child-view-sizes = child-view-sizes |> map ({child-view, size})-> {child-view, size: (size or default-size)}
+                
+            [0 til child-view-sizes.length]
+                |> each (i)->
+                    {child-view, size} = child-view-sizes[i]                    
+                    position = take i, child-view-sizes
+                        |> map ({size})-> size
+                        |> sum
+                    child-view.style <<< {
+                        left: if direction == \horizontal then "#{position * 100}%" else "0%"
+                        top: if direction == \horizontal then "0%" else "#{position * 100}%"
+                        width: if direction == \horizontal then "#{size * 100}%" else "100%"
+                        height: if direction == \horizontal then "100%" else "#{size * 100}%"
+                    }
 
     json = ({view, result}) !-> 
         pre = $ "<pre/>"
@@ -156,9 +149,14 @@ module.exports.get-presentation-context = ->
 
         json
 
-        pjson: plottablify json
+        pjson: new Plottable do
+            ({view, result}, {pretty, space}, continuation) !-->
+                pre = $ "<pre/>"
+                    ..html if not pretty then JSON.stringify result else JSON.stringify result, null, space
+                ($ view).append pre
+            {pretty: true, space: 4}
 
-        table: plottablify ({view, result}) !--> 
+        table: new Plottable ({view, result}, options, continuation) !--> 
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
@@ -185,6 +183,7 @@ module.exports.get-presentation-context = ->
                     ..exit!.remove!
                     ..text (.1)        
         
+            err, $table <- continuation {$table: $table, result}
 
         plot-histogram: (view, result)!-->
 
@@ -200,9 +199,7 @@ module.exports.get-presentation-context = ->
 
 
         plot-stacked-area: new Plottable do
-            aid
-            {y-axis-format: (d3.format ',')}
-            (continuation, options, {result, view}) !-->
+            ({result, view}, options, continuation) !-->
 
                 <- nv.add-graph 
 
@@ -228,6 +225,8 @@ module.exports.get-presentation-context = ->
                 throw err if !!err
                 
                 chart.update!
+
+            {y-axis-format: (d3.format ',')}
                 
 
         plot-scatter: (view, result, uoptions, callback = $.noop)!->
@@ -260,18 +259,16 @@ module.exports.get-presentation-context = ->
             callback chart            
 
 
-        with-options: with-options
+        with-options
 
-        plot: plot
+        plot
 
-        more: more
+        more
 
-        amore: amore
+        amore
 
         timeseries: new Plottable do
-            aid
-            {fill-intervals: false, x-label: 'X', x: (.x), y: (.y)}
-            (continuation, options, {result, view}) !-->
+            ({result, view}, options, continuation) !-->
 
                 <- nv.add-graph
 
@@ -290,6 +287,8 @@ module.exports.get-presentation-context = ->
                 throw err if !!err
 
                 chart.update!
+
+            {fill-intervals: false, x-label: 'X', x: (.x), y: (.y)}
 
 
         plot-line-bar: (view, result, {
