@@ -3,9 +3,57 @@
 require \prelude-ls
 {Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
+class Plottable
+  (@continuations, @options, @_plotter) ->
+  plotter: ({result, view}) ~>
+    @_plotter @continuations, @options, {result, view}
+
+plot = (p, {result, view}) -->
+  p.plotter {result, view}
+
+
+with-options = (p, o) ->
+  new Plottable do
+    p.continuations
+    {} <<< p.options <<< o
+    p._plotter
+ 
+ 
+acompose = (f, g) --> (chart, callback) ->
+  err, fchart <- f chart
+  return callback err, null if !!err
+  g fchart, callback
+ 
+ 
+amore = (p, c) ->
+  new Plottable do
+    p.continuations `acompose` c
+    {} <<< p.options
+    p._plotter
+ 
+ 
+more = (p, c) ->
+  new Plottable do
+    p.continuations `acompose` (chart, callback) -> 
+      try 
+        cchart = c chart
+      catch ex
+        return callback ex, null
+      callback null, cchart
+    {} <<< p.options
+    p._plotter
+ 
+
+# async id
+aid = (chart, callback) -> callback null, chart
+
+
 module.exports.get-presentation-context = ->
 
-    layout = (view, direction, ...)!->            
+    layout = (plotters) -> new Plottable do
+        aid
+        {direction: 'vertical'}
+        (continuation, {direction}, {result, view}) !-->
 
             functions = drop 2, Array.prototype.slice.call arguments            
 
@@ -70,7 +118,7 @@ module.exports.get-presentation-context = ->
 
         layout-vertical: (view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
 
-        json: (view, result)!--> 
+        json: ({view, result}) !-> 
             pre = $ "<pre/>"
                 ..html JSON.stringify result, null, 4
             ($ view).append pre
@@ -116,30 +164,36 @@ module.exports.get-presentation-context = ->
             chart.update!
 
 
-        plot-stacked-area: (view, result, {y-axis-format = (d3.format ',')})!->
+        plot-stacked-area: new Plottable do
+            aid
+            {y-axis-format = (d3.format ',')}
+            (continuation, options, {result, view}) !-->
 
-            <- nv.add-graph 
+                <- nv.add-graph 
 
-            all-values = result |> concat-map (.values |> concat-map (.0)) |> unique |> sort
-            result := result |> map ({key, values}) ->
-                key: key
-                values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
+                all-values = result |> concat-map (.values |> concat-map (.0)) |> unique |> sort
+                result := result |> map ({key, values}) ->
+                    key: key
+                    values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
 
-            chart = nv.models.stacked-area-chart!
-                .x (.0)
-                .y (.1)
-                .useInteractiveGuideline true
-                .show-controls true
-                .clip-edge true
+                chart = nv.models.stacked-area-chart!
+                    .x (.0)
+                    .y (.1)
+                    .useInteractiveGuideline true
+                    .show-controls true
+                    .clip-edge true
 
-            chart
-                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-                ..y-axis.tick-format y-axis-format
-            
-            plot-chart view, result, chart
-            
-            chart.update!
-            
+                chart
+                    ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+                    ..y-axis.tick-format y-axis-format
+                
+                plot-chart view, result, chart
+
+                err, chart <- continuation {chart, result}
+                throw err if !!err
+                
+                chart.update!
+                
 
         plot-scatter: (view, result, uoptions, callback = $.noop)!->
 
@@ -170,24 +224,37 @@ module.exports.get-presentation-context = ->
 
             callback chart            
 
-        plot-timeseries: (view, result, options = {fill-intervals: true}, callback = $.noop) !->
 
-            <- nv.add-graph
+        with-options: with-options
 
-            if options.fill-intervals
-                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+        plot: plot
 
-            chart = nv.models.line-chart!
-                .x (.0)
-                .y (.1)
-            chart
-                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-            
-            plot-chart view, result, chart
+        more: more
 
-            chart.update!
+        amore: amore
 
-            callback chart
+        timeseries: new Plottable do
+            aid
+            {fill-intervals: false, x-label: 'X', x: (.x), y: (.y)}
+            (continuation, options, {result, view}) !-->
+
+                <- nv.add-graph
+
+                if options.fill-intervals
+                    result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+
+                chart = nv.models.line-chart!
+                    .x (.0)
+                    .y (.1)
+                chart
+                    ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+                
+                plot-chart view, result, chart
+
+                err, chart <- continuation {chart, result}
+                throw err if !!err
+
+                chart.update!
 
 
         plot-line-bar: (view, result, {

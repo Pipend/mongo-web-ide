@@ -20,5 +20,7 @@ require \prelude-ls
 
 <- $
 presentation = ($ \#presentation .html!).replace /\t/g, " "
-[err, result] = compile-and-execute-livescript presentation, {result: transformed-result, view: document.body, d3, $} <<< get-transformation-context! <<< get-presentation-context! <<< parameters <<< (require \prelude-ls)
-console.log err if !!err
+[err, func] = compile-and-execute-livescript "(#presentation\n)", {d3, $} <<< get-transformation-context! <<< get-presentation-context! <<< parameters <<< (require \prelude-ls)
+return console.log err if !!err
+
+func {result: transformed-result, view: document.body}

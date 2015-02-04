@@ -152,8 +152,14 @@ execute-and-transform-query = (query-database, {parameters, transformation}:docu
     return callback err, null if !!err
 
     # apply transformation
-    [err, transformed-result] = compile-and-execute-livescript transformation, (get-transformation-context! <<< (require \prelude-ls) <<< {result} <<< parameters)
-    callback err, transformed-result
+    [err, func] = compile-and-execute-livescript "(#transformation\n)", (get-transformation-context! <<< (require \prelude-ls) <<< parameters)
+    return callback err if !!err
+    try
+        transformed-result = func result
+    catch ex
+        return callback ex.to-string!, null
+
+    callback null, transformed-result
 
 get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
