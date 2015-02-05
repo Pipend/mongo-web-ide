@@ -142,7 +142,7 @@ execute-query-and-display-results = do ->
         [err, func] = compile-and-execute-livescript "(#presentation\n)", {d3, $} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
         return display-error "ERROR IN THE PRESENTATION COMPILATION: #{err}" if !!err
         try
-            func {view: ($ '.output' .get 0), result}
+            func ($ '.output' .get 0), result
         catch ex
             return display-error "ERROR IN THE PRESENTATION EXECUTAION: #{ex.to-string!}"
 

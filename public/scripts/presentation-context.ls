@@ -3,23 +3,33 @@
 require \prelude-ls
 {Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
+rextend = (a, b) -->
+    btype = typeof! b
+
+    return b if btype == \Function
+    return b if btype == \String
+    return b if a is null or (\Undefined == typeof! a)
+
+    bkeys = Obj.keys b
+    return a if bkeys.length == 0
+    bkeys |> each (key) ->
+        a[key] = a[key] `rextend` b[key]
+    a
+
+
 class Plottable
-    (@_plotter, @options = {}, @continuations = (chart, callback) -> callback null, chart) ->
-    plotter: ({result, view}) ~>
-        @_plotter {result, view}, @options, @continuations
+    (@_plotter, @options = {}, @continuations = (..., callback) -> callback null) ->
+    plotter: (view, result) ~>
+        @_plotter view, result, @options, @continuations
 
-plot = (p, {result, view}) -->
-  p.plotter {result, view}
+plot = (p, view, result) -->
+  p.plotter view, result
 
-
-plottablify = (f) ->
-    new Plottable ({result, view}, options, continuation) !-->
-        f {result, view}
 
 with-options = (p, o) ->
   new Plottable do
     p._plotter
-    {} <<< p.options <<< o
+    ({} `rextend` p.options) `rextend` o
     p.continuations
  
  
@@ -32,26 +42,26 @@ acompose = (f, g) --> (chart, callback) ->
 amore = (p, c) ->
   new Plottable do
     p._plotter
-    {} <<< p.options
-    p.continuations `acompose` c
+    {} `rextend` p.options
+    c
  
  
 more = (p, c) ->
   new Plottable do
     p._plotter
-    {} <<< p.options
-    p.continuations `acompose` (chart, callback) -> 
+    {} `rextend` p.options
+    (..., callback) -> 
       try 
-        cchart = c chart
+        c ...
       catch ex
-        return callback ex, null
-      callback null, cchart
+        return callback ex
+      callback null
  
 
 project = (f, p) -->
   new Plottable do
-    ({result, view}, options, continuation) !-->  # duck
-      p.plotter {view, result: (f result)}
+    (view, result, options, continuation) !-->  # duck
+        p.plotter view, (f result)
 
 
 cell = (plotter) ->
@@ -61,9 +71,6 @@ cell = (plotter) ->
 scell = (size, plotter) ->
   {size, plotter}
 
-# async id
-aid = (chart, callback) -> callback null, chart
-
 
 module.exports.get-presentation-context = ->
 
@@ -71,7 +78,7 @@ module.exports.get-presentation-context = ->
         if "Array" != typeof! cells
             cells := drop 1, [].slice.call arguments
 
-        new Plottable ({result, view}, options, continuation) !-->
+        new Plottable (view, result, options, continuation) !-->
             child-view-sizes = cells |> map ({size, plotter}) ->
                     child-view = document.create-element \div
                         ..style <<< {                            
@@ -80,7 +87,7 @@ module.exports.get-presentation-context = ->
                         }
                         ..class-name = direction
                     view.append-child child-view
-                    plot plotter, {view: child-view, result}
+                    plot plotter, child-view, result
                     {size, child-view}
 
             sizes = child-view-sizes 
@@ -104,7 +111,7 @@ module.exports.get-presentation-context = ->
                         height: if direction == \horizontal then "100%" else "#{size * 100}%"
                     }
 
-    json = ({view, result}) !-> 
+    json = (view, result) !-> 
         pre = $ "<pre/>"
             ..html JSON.stringify result, null, 4
         ($ view).append pre
@@ -135,9 +142,17 @@ module.exports.get-presentation-context = ->
     # all functions defined here are accessibly by the presentation code
     presentaion-context = {        
 
-        plottablify
+        Plottable
 
         project
+
+        with-options
+
+        plot
+
+        more
+
+        amore
 
         cell
         
@@ -150,13 +165,13 @@ module.exports.get-presentation-context = ->
         json
 
         pjson: new Plottable do
-            ({view, result}, {pretty, space}, continuation) !-->
+            (view, result, {pretty, space}, continuation) !-->
                 pre = $ "<pre/>"
                     ..html if not pretty then JSON.stringify result else JSON.stringify result, null, space
                 ($ view).append pre
             {pretty: true, space: 4}
 
-        table: new Plottable ({view, result}, options, continuation) !--> 
+        table: new Plottable (view, result, options, continuation) !--> 
 
             cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
             
@@ -183,7 +198,7 @@ module.exports.get-presentation-context = ->
                     ..exit!.remove!
                     ..text (.1)        
         
-            err, $table <- continuation {$table: $table, result}
+            <- continuation $table, result
 
         plot-histogram: (view, result)!-->
 
@@ -198,8 +213,8 @@ module.exports.get-presentation-context = ->
             chart.update!
 
 
-        plot-stacked-area: new Plottable do
-            ({result, view}, options, continuation) !-->
+        stacked-area: new Plottable do
+            (view, result, {x, y, y-axis, x-axis}, continuation) !-->
 
                 <- nv.add-graph 
 
@@ -209,24 +224,28 @@ module.exports.get-presentation-context = ->
                     values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
 
                 chart = nv.models.stacked-area-chart!
-                    .x (.0)
-                    .y (.1)
+                    .x x
+                    .y y
                     .useInteractiveGuideline true
                     .show-controls true
                     .clip-edge true
 
                 chart
-                    ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-                    ..y-axis.tick-format y-axis-format
+                    ..x-axis.tick-format x-axis.tick-format
+                    ..y-axis.tick-format y-axis.tick-format
                 
                 plot-chart view, result, chart
 
-                err, chart <- continuation {chart, result}
-                throw err if !!err
+                <- continuation chart, result
                 
                 chart.update!
 
-            {y-axis-format: (d3.format ',')}
+            {
+                x: (.0)
+                y: (.1)
+                y-axis: tick-format: (d3.format ',')
+                x-axis: tick-format: (timestamp)-> (d3.time.format \%x) new Date timestamp
+            }
                 
 
         plot-scatter: (view, result, uoptions, callback = $.noop)!->
@@ -259,36 +278,24 @@ module.exports.get-presentation-context = ->
             callback chart            
 
 
-        with-options
-
-        plot
-
-        more
-
-        amore
-
         timeseries: new Plottable do
-            ({result, view}, options, continuation) !-->
+            (view, result, {x-label, x, y}:options, continuation) !-->
 
                 <- nv.add-graph
 
                 if options.fill-intervals
                     result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
 
-                chart = nv.models.line-chart!
-                    .x (.0)
-                    .y (.1)
-                chart
+                chart = nv.models.line-chart!.x x .y y
                     ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-                
-                plot-chart view, result, chart
 
-                err, chart <- continuation {chart, result}
-                throw err if !!err
+                <- continuation chart, result
+
+                plot-chart view, result, chart
 
                 chart.update!
 
-            {fill-intervals: false, x-label: 'X', x: (.x), y: (.y)}
+            {fill-intervals: false, x-label: 'X', x: (.0), y: (.1)}
 
 
         plot-line-bar: (view, result, {
