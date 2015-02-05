@@ -1,13 +1,12 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{Obj, any, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 rextend = (a, b) -->
     btype = typeof! b
 
-    return b if btype == \Function
-    return b if btype == \String
+    return b if any (== btype), <[Boolan Number String]>
     return b if a is null or (\Undefined == typeof! a)
 
     bkeys = Obj.keys b
