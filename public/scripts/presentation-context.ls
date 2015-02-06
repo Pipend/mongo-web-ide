@@ -3,18 +3,19 @@
 require \prelude-ls
 {Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
+# all functions defined here are accessibly by the presentation code
 module.exports.get-presentation-context = ->
 
-    layout = (view, direction, ...)!->            
+    layout = (view, direction, ...)!->
 
-            functions = drop 2, Array.prototype.slice.call arguments            
+            functions = drop 2, Array.prototype.slice.call arguments
 
             child-views = [0  til functions.length]
                 |> map (i)->
                     child-view = document.create-element \div
-                        ..style <<< {                            
+                        ..style <<< {
                             overflow: \auto
-                            position: \absolute                            
+                            position: \absolute
                         }
                         ..class-name = direction
                     view.append-child child-view
@@ -30,7 +31,7 @@ module.exports.get-presentation-context = ->
                 
             [0 til child-views-with-size.length]
                 |> each (i)->
-                    [child-view, size] = child-views-with-size[i]                    
+                    [child-view, size] = child-views-with-size[i]
                     position = take i, child-views-with-size
                         |> map ([, size])-> size
                         |> sum
@@ -44,9 +45,9 @@ module.exports.get-presentation-context = ->
 
     plot-chart = (view, result, chart)->
         d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
-
-    # all functions defined here are accessibly by the presentation code
-    {        
+    
+    
+    {} <<< (require \./transformation-context.ls).get-transformation-context! <<< {
 
         layout-horizontal: (view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
 
@@ -157,25 +158,7 @@ module.exports.get-presentation-context = ->
             
             plot-chart view, result, chart
 
-            chart.update!
-
-
-        fill-intervals: (v)->
-
-            gcd = (a, b) -> match b
-                | 0 => a
-                | _ => gcd b, (a % b)
-
-            x-scale = v |> map (.0)
-            x-step = x-scale |> foldr1 gcd
-            max-x-scale = maximum x-scale
-            min-x-scale = minimum x-scale
-            [0 to (max-x-scale - min-x-scale) / x-step]
-                |> map (i)->
-                    x-value = min-x-scale + x-step * i
-                    [, y-value]? = v |> find ([x])-> x == x-value
-                    [x-value, y-value or 0]
-            
+            chart.update!                    
 
         trendline: (v, sample-size)->
             [0 to v.length - sample-size]

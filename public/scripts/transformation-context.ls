@@ -1,14 +1,45 @@
 moment = require \moment
+{Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 parse-date = (s) -> new Date s
 today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
 
-module.exports.get-transformation-context = ->
+# all functions defined here are accessible by the transformation code
+module.exports.get-transformation-context = ->  
 
-	# all functions defined here are accessibly by the transformation code
-	{
-		day-to-timestamp: -> it * 86400000
-		parse-date: parse-date
-		to-timestamp: (s) -> (moment (new Date s)).unix! * 1000
-		today: today!
-	}
+    fill-range =(v, min-x-scale, max-x-scale, x-step)->
+
+        gcd = (a, b) -> match b
+            | 0 => a
+            | _ => gcd b, (a % b)
+        
+        x-step = x-step or (v 
+            |> map (.0) 
+            |> foldr1 gcd)
+
+        [0 to (max-x-scale - min-x-scale) / x-step]
+            |> map (i)->
+                x-value = min-x-scale + x-step * i
+                [, y-value]? = v |> find ([x])-> x == x-value
+                [x-value, y-value or 0]
+
+    {
+
+        day-to-timestamp: -> it * 86400000
+
+        fill-intervals: (v)->
+            x-scale = v |> map (.0)
+            fill-range do 
+                v
+                minimum x-scale
+                maximum x-scale
+
+        fill-range
+
+        parse-date: parse-date
+
+        to-timestamp: (s) -> (moment (new Date s)).unix! * 1000
+
+        today: today!
+
+    }
