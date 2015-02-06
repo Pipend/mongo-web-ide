@@ -3,6 +3,7 @@ moment = require \moment
 
 parse-date = (s) -> new Date s
 today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
+{object-id-from-date, date-from-object-id} = require \./utils.ls
 
 # all functions defined here are accessible by the transformation code
 module.exports.get-transformation-context = ->  
@@ -25,8 +26,10 @@ module.exports.get-transformation-context = ->
 
     {
 
-        day-to-timestamp: -> it * 86400000
+        date-from-object-id
 
+        day-to-timestamp: -> it * 86400000
+        
         fill-intervals: (v)->
             x-scale = v |> map (.0)
             fill-range do 
@@ -36,6 +39,8 @@ module.exports.get-transformation-context = ->
 
         fill-range
 
+        object-id-from-date
+        
         parse-date: parse-date
 
         to-timestamp: (s) -> (moment (new Date s)).unix! * 1000

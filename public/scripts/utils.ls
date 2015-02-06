@@ -6,7 +6,7 @@ require \LiveScript
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{keys, map, Str} = require \prelude-ls
+{keys, map, Str, floor} = require \prelude-ls
 
 
 module.exports.compile-and-execute-livescript = (livescript-code, context)->
@@ -31,3 +31,10 @@ module.exports.compile-and-execute-livescript = (livescript-code, context)->
         return die "javascript runtime error: #{err.to-string!}"
 
     [null, result]
+
+
+module.exports.object-id-from-date = (date) ->
+    ((floor date.getTime! / 1000).to-string 16) + "0000000000000000"
+
+module.exports.date-from-object-id = (object-id) ->
+    new Date (parse-int (object-id.substring 0, 8), 16) * 1000

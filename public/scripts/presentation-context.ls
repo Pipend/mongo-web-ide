@@ -45,9 +45,27 @@ module.exports.get-presentation-context = ->
 
     plot-chart = (view, result, chart)->
         d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
-    
-    
-    {} <<< (require \./transformation-context.ls).get-transformation-context! <<< {
+
+    # [[key, val]] -> [[key, val]]
+    fill-intervals = (v, default-value = 0) ->
+
+        gcd = (a, b) -> match b
+            | 0 => a
+            | _ => gcd b, (a % b)
+
+        x-scale = v |> map (.0)
+        x-step = x-scale |> foldr1 gcd
+        max-x-scale = maximum x-scale
+        min-x-scale = minimum x-scale
+        [0 to (max-x-scale - min-x-scale) / x-step]
+            |> map (i)->
+                x-value = min-x-scale + x-step * i
+                [, y-value]? = v |> find ([x])-> x == x-value
+                [x-value, y-value or default-value]
+        
+
+    # all functions defined here are accessibly by the presentation code
+    {} <<< (require \./transformation-context.ls).get-transformation-context! <<< {        
 
         layout-horizontal: (view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
 
@@ -85,7 +103,6 @@ module.exports.get-presentation-context = ->
                     ..exit!.remove!
                     ..text (.1)        
         
-
         plot-histogram: (view, result)!-->
 
             <- nv.add-graph
@@ -97,7 +114,6 @@ module.exports.get-presentation-context = ->
             plot-chart view, result, chart
             
             chart.update!
-
 
         plot-stacked-area: (view, result, {y-axis-format = (d3.format ',')})!->
 
@@ -123,9 +139,10 @@ module.exports.get-presentation-context = ->
             
             chart.update!
             
+        plot-scatter: (view, result, uoptions, callback = $.noop)!->
 
-        plot-scatter: (view, result, {tooltip, x-axis-format = (d3.format '.02f'), y-axis-format = (d3.format '.02f')})!->
-
+            options = {tooltip: null, x-axis-format: (d3.format '.02f'), y-axis-format: (d3.format '.02f'), show-legend: true} <<< uoptions
+            console.log options
             <- nv.add-graph
 
             chart = nv.models.scatter-chart!
@@ -138,28 +155,65 @@ module.exports.get-presentation-context = ->
                 ..scatter.only-circles false
 
                 ..tooltip-content (key, , , {point}) -> 
-                    (tooltip or (key) -> '<h3>' + key + '</h3>') key, point
+                    (options.tooltip or (key) -> '<h3>' + key + '</h3>') key, point
 
-                ..x-axis.tick-format x-axis-format
-                ..y-axis.tick-format y-axis-format
+                ..x-axis.tick-format options.x-axis-format
+                ..y-axis.tick-format options.y-axis-format
 
+            chart.show-legend !!options.show-legend
             plot-chart view, result, chart
             
-            chart.update!            
+            
+            chart.update!
 
-        plot-timeseries: (view, result)!->            
+            callback chart            
+
+        plot-timeseries: (view, result, options = {fill-intervals: true}, callback = $.noop) !->
 
             <- nv.add-graph
+
+            if options.fill-intervals
+                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
 
             chart = nv.models.line-chart!
                 .x (.0)
                 .y (.1)
-            chart.x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+            chart
+                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
             
             plot-chart view, result, chart
 
-            chart.update!                    
+            chart.update!
 
+            callback chart
+
+
+        plot-line-bar: (view, result, {
+            fill-intervals = true
+            y1-axis-format = (d3.format ',f')
+            y2-axis-format = (d3.format '.02f')
+
+        }) !->
+            <- nv.add-graph
+
+            if options.fill-intervals
+                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+
+            chart = nv.models.line-plus-bar-chart!
+                .x (, i) -> i
+                .y (.1)
+            chart
+                ..x-axis.tick-format (d) -> 
+                    timestamp = data.0.values[d] and data.0.values[d].0 or 0
+                    (d3.time.format \%x) new Date timestamp
+                ..y1-axis.tick-format y1-axis-format
+                ..y2-axis.tick-format y2-axis-format
+                ..bars.force-y [0]
+
+            plot-chart view, result, chart
+
+            chart.update!
+            
         trendline: (v, sample-size)->
             [0 to v.length - sample-size]
                 |> map (i)->
@@ -169,9 +223,3 @@ module.exports.get-presentation-context = ->
                     [v[i + sample-size - 1].0, new-y]
 
     }    
-
-
-
-
-
-
