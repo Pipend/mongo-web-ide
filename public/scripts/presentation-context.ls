@@ -19,9 +19,9 @@ rextend = (a, b) -->
 
 # Plottable is a monad, run it by plot funciton
 class Plottable
-    (@_plotter, @options = {}, @continuations = (..., callback) -> callback null) ->
+    (@_plotter, @options = {}, @continuations = ((..., callback) -> callback null), @projection = id) ->
     plotter: (view, result) ~>
-        @_plotter view, result, @options, @continuations
+        @_plotter view, (@projection result), @options, @continuations
 
 # Runs a Plottable
 plot = (p, view, result) -->
@@ -34,6 +34,7 @@ with-options = (p, o) ->
     p._plotter
     ({} `rextend` p.options) `rextend` o
     p.continuations
+    p.projection
  
  
 acompose = (f, g) --> (chart, callback) ->
@@ -47,6 +48,7 @@ amore = (p, c) ->
     p._plotter
     {} `rextend` p.options
     c
+    p.projection
  
  
 more = (p, c) ->
@@ -59,14 +61,16 @@ more = (p, c) ->
       catch ex
         return callback ex
       callback null
+    p.projection
  
 
 # projects the data of a Plottable with f
 project = (f, p) -->
   new Plottable do
-    (view, result, options, continuation) !-->  # duck
-        p.plotter view, (f result)
+    p._plotter
     p.options
+    p.continuations
+    p.projection >> f
 
 
 # wraps a Plottable in a cell (used in layout)
