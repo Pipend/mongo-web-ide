@@ -1,12 +1,13 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{Obj, any, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{Obj, id, any, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
+# recursively extend a with b
 rextend = (a, b) -->
     btype = typeof! b
 
-    return b if any (== btype), <[Boolan Number String]>
+    return b if any (== btype), <[Boolean Number String Function]>
     return b if a is null or (\Undefined == typeof! a)
 
     bkeys = Obj.keys b
@@ -16,15 +17,18 @@ rextend = (a, b) -->
     a
 
 
+# Plottable is a monad, run it by plot funciton
 class Plottable
     (@_plotter, @options = {}, @continuations = (..., callback) -> callback null) ->
     plotter: (view, result) ~>
         @_plotter view, result, @options, @continuations
 
+# Runs a Plottable
 plot = (p, view, result) -->
   p.plotter view, result
 
 
+# Attaches options to a Plottable
 with-options = (p, o) ->
   new Plottable do
     p._plotter
@@ -49,26 +53,27 @@ more = (p, c) ->
   new Plottable do
     p._plotter
     {} `rextend` p.options
-    (..., callback) -> 
+    (...init, callback) -> 
       try 
-        c ...
+        c ...init
       catch ex
         return callback ex
       callback null
  
 
+# projects the data of a Plottable with f
 project = (f, p) -->
   new Plottable do
     (view, result, options, continuation) !-->  # duck
         p.plotter view, (f result)
+    p.options
 
 
-cell = (plotter) ->
-  {plotter}
+# wraps a Plottable in a cell (used in layout)
+cell = (plotter) -> {plotter}
 
-
-scell = (size, plotter) ->
-  {size, plotter}
+# wraps a Plottable in cell that has a size (used in layout)
+scell = (size, plotter) -> {size, plotter}
 
 
 module.exports.get-presentation-context = ->
@@ -136,6 +141,60 @@ module.exports.get-presentation-context = ->
                 [x-value, y-value or default-value]
         
 
+    fill-intervals-f = fill-intervals
+
+
+    scatter = new Plottable do 
+        (view, result, {tooltip, show-legend, color, transition-duration, x, y}, continuation)!->
+
+            <- nv.add-graph
+
+            chart = nv.models.scatter-chart!
+                .show-dist-x x.axis.show-dist
+                .show-dist-y y.axis.show-dist
+                .transition-duration transition-duration
+                .color color
+                .showDistX x.axis.show-dist
+                .showDistY y.axis.show-dist
+                .x x.f
+                .y y.f
+
+
+            chart
+                ..scatter.only-circles false
+
+                ..tooltip-content (key, , , {point}) -> 
+                    tooltip key, point
+
+                ..x-axis.tick-format x.axis.format
+                ..y-axis.tick-format y.axis.format
+
+            chart.show-legend show-legend
+            plot-chart view, result, chart
+            
+
+            <- continuation chart, result
+            
+            chart.update!
+
+        {
+            tooltip: (key, point) -> '<h3>' + key + '</h3>'
+            show-legend: true
+            transition-duration: 350
+            color: d3.scale.category10!.range!
+            x:
+                axis:
+                    format: (d3.format '.02f')
+                    show-dist: true
+                f: (.x)
+
+            y:
+                axis:
+                    format: (d3.format '.02f')
+                    show-dist: true
+                f: (.y)
+
+        }         
 
 
     # all functions defined here are accessibly by the presentation code
@@ -247,46 +306,26 @@ module.exports.get-presentation-context = ->
             }
                 
 
-        plot-scatter: (view, result, uoptions, callback = $.noop)!->
+        scatter1: project do 
+            map (d) -> {
+                key: d.key
+                values: [d]
+            }
+            scatter
 
-            options = {tooltip: null, x-axis-format: (d3.format '.02f'), y-axis-format: (d3.format '.02f'), show-legend: true} <<< uoptions
-            console.log options
-            <- nv.add-graph
 
-            chart = nv.models.scatter-chart!
-                .show-dist-x true
-                .show-dist-y true
-                .transition-duration 350
-                .color d3.scale.category10!.range!
-
-            chart
-                ..scatter.only-circles false
-
-                ..tooltip-content (key, , , {point}) -> 
-                    (options.tooltip or (key) -> '<h3>' + key + '</h3>') key, point
-
-                ..x-axis.tick-format options.x-axis-format
-                ..y-axis.tick-format options.y-axis-format
-
-            chart.show-legend !!options.show-legend
-            plot-chart view, result, chart
-            
-            
-            chart.update!
-
-            callback chart            
-
+        scatter
 
         timeseries: new Plottable do
-            (view, result, {x-label, x, y}:options, continuation) !-->
+            (view, result, {x-label, x, y, key, values, fill-intervals}:options, continuation) !-->
 
                 <- nv.add-graph
 
-                if options.fill-intervals
-                    result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+                result := result |> map -> {key: (key it), values: (values it) |> map (-> [(x.f it), (y.f it)]) |> if fill-intervals is not false then (-> fill-intervals-f it, if fill-intervals is true then 0 else fill-intervals) else id} #({key, values})-> {key, values: values |> fill-intervals}
 
-                chart = nv.models.line-chart!.x x .y y
-                    ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
+                chart = nv.models.line-chart!.x (.0) .y (.1)
+                    ..x-axis.tick-format x.axis.format
+                    ..y-axis.tick-format y.axis.format
 
                 <- continuation chart, result
 
@@ -294,7 +333,23 @@ module.exports.get-presentation-context = ->
 
                 chart.update!
 
-            {fill-intervals: false, x-label: 'X', x: (.0), y: (.1)}
+            {
+                fill-intervals: false
+                key: (.key)
+                values: (.values)
+
+                x: 
+                    f: (.0)
+                    axis: 
+                        format: (timestamp)-> (d3.time.format \%x) new Date timestamp
+                        label: 'time'
+
+                y: 
+                    f: (.1)
+                    axis:
+                        format: id
+
+            }
 
 
         plot-line-bar: (view, result, {
