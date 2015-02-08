@@ -302,10 +302,7 @@ module.exports.get-presentation-context = ->
             histogram.plotter
             histogram.options
             histogram.continuations
-            (data, options) -> data |> (map (d) -> {
-                key: (if !!options.key then options.key else (.key)) d
-                values: [d]
-            }) >> ((fdata) -> histogram.projection fdata, options)
+            (data, options) -> [{key: "", values: data}] |> ((fdata) -> histogram.projection fdata, options)
 
 
         histogram
@@ -360,7 +357,7 @@ module.exports.get-presentation-context = ->
             scatter.plotter
             scatter.options
             scatter.continuations
-            (data, options) -> data |> (map (d) -> {
+            (data, options) -> data |> (map (d) -> {} <<< d <<< {
                 key: (if !!options.key then options.key else (.key)) d
                 values: [d]
             }) >> ((fdata) -> scatter.projection fdata, options)
