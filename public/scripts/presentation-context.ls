@@ -1,7 +1,7 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{Obj, id, any, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{Obj, id, any, average, concat-map, drop, each, filter, find, foldr1, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
 
 # recursively extend a with b
 rextend = (a, b) -->
@@ -19,20 +19,20 @@ rextend = (a, b) -->
 
 # Plottable is a monad, run it by plot funciton
 class Plottable
-    (@_plotter, @options = {}, @continuations = ((..., callback) -> callback null), @projection = id) ->
-    plotter: (view, result) ~>
-        @_plotter view, (@projection result), @options, @continuations
+    (@plotter, @options = {}, @continuations = ((..., callback) -> callback null), @projection = id) ->
+    _plotter: (view, result) ~>
+        @plotter view, (@projection result, @options), @options, @continuations
 
 # Runs a Plottable
 plot = (p, view, result) -->
-  p.plotter view, result
+  p._plotter view, result
 
 
 # Attaches options to a Plottable
 with-options = (p, o) ->
   new Plottable do
-    p._plotter
-    ({} `rextend` p.options) `rextend` o
+    p.plotter
+    {} `rextend` p.options `rextend` o
     p.continuations
     p.projection
  
@@ -45,7 +45,7 @@ acompose = (f, g) --> (chart, callback) ->
  
 amore = (p, c) ->
   new Plottable do
-    p._plotter
+    p.plotter
     {} `rextend` p.options
     c
     p.projection
@@ -53,7 +53,7 @@ amore = (p, c) ->
  
 more = (p, c) ->
   new Plottable do
-    p._plotter
+    p.plotter
     {} `rextend` p.options
     (...init, callback) -> 
       try 
@@ -67,10 +67,12 @@ more = (p, c) ->
 # projects the data of a Plottable with f
 project = (f, p) -->
   new Plottable do
-    p._plotter
+    p.plotter
     p.options
     p.continuations
-    p.projection >> f
+    (data, options) -> 
+        fdata = f data, options
+        p.projection fdata, options
 
 
 # wraps a Plottable in a cell (used in layout)
@@ -147,21 +149,56 @@ module.exports.get-presentation-context = ->
 
     fill-intervals-f = fill-intervals
 
+    histogram = new Plottable do 
+        (view, result, {x, y, key, values, transition-duration, reduce-x-ticks, rotate-labels, show-controls, group-spacing, show-legend}, continuation) !-->
+
+            <- nv.add-graph
+
+            result := result |> map (-> {key: (key it), values: (values it)})
+
+            chart = nv.models.multi-bar-chart!
+                .x x
+                .y y
+                .transition-duration transition-duration
+                .reduce-x-ticks reduce-x-ticks
+                .rotate-labels rotate-labels
+                .show-controls show-controls
+                .group-spacing group-spacing
+                .show-legend show-legend
+
+            plot-chart view, result, chart
+            
+            chart.update!
+
+        {
+            key: (.key)
+            values: (.values)
+            x: (.0)
+            y: (.1)
+            transition-duration: 300
+            reduce-x-ticks: false # If 'false', every single x-axis tick label will be rendered.
+            rotate-labels: 0 # Angle to rotate x-axis labels.
+            show-controls: true
+            group-spacing: 0.1 # Distance between each group of bars.
+            show-legend: true
+
+        }
+
 
     scatter = new Plottable do 
-        (view, result, {tooltip, show-legend, color, transition-duration, x, y}, continuation)!->
+        (view, result, {tooltip, show-legend, color, transition-duration, x, y, x-axis, y-axis}, continuation)!->
 
             <- nv.add-graph
 
             chart = nv.models.scatter-chart!
-                .show-dist-x x.axis.show-dist
-                .show-dist-y y.axis.show-dist
+                .show-dist-x x-axis.show-dist
+                .show-dist-y y-axis.show-dist
                 .transition-duration transition-duration
                 .color color
-                .showDistX x.axis.show-dist
-                .showDistY y.axis.show-dist
-                .x x.f
-                .y y.f
+                .showDistX x-axis.show-dist
+                .showDistY y-axis.show-dist
+                .x x
+                .y y
 
 
             chart
@@ -170,8 +207,8 @@ module.exports.get-presentation-context = ->
                 ..tooltip-content (key, , , {point}) -> 
                     tooltip key, point
 
-                ..x-axis.tick-format x.axis.format
-                ..y-axis.tick-format y.axis.format
+                ..x-axis.tick-format x-axis.format
+                ..y-axis.tick-format y-axis.format
 
             chart.show-legend show-legend
             plot-chart view, result, chart
@@ -186,17 +223,15 @@ module.exports.get-presentation-context = ->
             show-legend: true
             transition-duration: 350
             color: d3.scale.category10!.range!
-            x:
-                axis:
-                    format: (d3.format '.02f')
-                    show-dist: true
-                f: (.x)
+            x-axis:
+                format: d3.format '.02f'
+                show-dist: true
+            x: (.x)
 
-            y:
-                axis:
-                    format: (d3.format '.02f')
-                    show-dist: true
-                f: (.y)
+            y-axis:
+                format: d3.format '.02f'
+                show-dist: true
+            y: (.y)
 
         }         
 
@@ -220,9 +255,9 @@ module.exports.get-presentation-context = ->
         
         scell
 
-        layout-horizontal: layout \horizontal #(view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
+        layout-horizontal: layout \horizontal
 
-        layout-vertical: layout \vertical #(view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
+        layout-vertical: layout \vertical
 
         json
 
@@ -262,35 +297,37 @@ module.exports.get-presentation-context = ->
         
             <- continuation $table, result
 
-        plot-histogram: (view, result)!-->
 
-            <- nv.add-graph
+        histogram1: new Plottable do
+            histogram.plotter
+            histogram.options
+            histogram.continuations
+            (data, options) -> data |> (map (d) -> {
+                key: (if !!options.key then options.key else (.key)) d
+                values: [d]
+            }) >> ((fdata) -> histogram.projection fdata, options)
 
-            chart = nv.models.multi-bar-chart!
-                .x (.label)
-                .y (.value)
 
-            plot-chart view, result, chart
-            
-            chart.update!
+        histogram
 
 
         stacked-area: new Plottable do
-            (view, result, {x, y, y-axis, x-axis}, continuation) !-->
+            (view, result, {x, y, y-axis, x-axis, show-legend, show-controls, use-interactive-guideline, clip-edge, fill-intervals, key, values}, continuation) !-->
 
                 <- nv.add-graph 
 
-                all-values = result |> concat-map (.values |> concat-map (.0)) |> unique |> sort
-                result := result |> map ({key, values}) ->
-                    key: key
-                    values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
+                all-values = result |> concat-map (-> (values it) |> concat-map x) |> unique |> sort
+                result := result |> map (d) ->
+                    key: key d
+                    values: all-values |> map ((v) -> [v, (values d) |> find (-> (x it) == v) |> (-> if !!it then (y it) else (fill-intervals))])
 
                 chart = nv.models.stacked-area-chart!
                     .x x
                     .y y
-                    .useInteractiveGuideline true
-                    .show-controls true
-                    .clip-edge true
+                    .use-interactive-guideline use-interactive-guideline
+                    .show-controls show-controls
+                    .clip-edge clip-edge
+                    .show-legend show-legend
 
                 chart
                     ..x-axis.tick-format x-axis.tick-format
@@ -305,31 +342,48 @@ module.exports.get-presentation-context = ->
             {
                 x: (.0)
                 y: (.1)
-                y-axis: tick-format: (d3.format ',')
-                x-axis: tick-format: (timestamp)-> (d3.time.format \%x) new Date timestamp
+                key: (.key)
+                values: (.values)
+                show-legend: true
+                show-controls: true
+                clip-edge: true
+                fill-intervals: 0
+                use-interactive-guideline: true
+                y-axis: 
+                    tick-format: (d3.format ',')
+                x-axis: 
+                    tick-format: (timestamp)-> (d3.time.format \%x) new Date timestamp
             }
-                
 
-        scatter1: project do 
-            map (d) -> {
-                key: d.key
+
+        scatter1: new Plottable do
+            scatter.plotter
+            scatter.options
+            scatter.continuations
+            (data, options) -> data |> (map (d) -> {
+                key: (if !!options.key then options.key else (.key)) d
                 values: [d]
-            }
-            scatter
+            }) >> ((fdata) -> scatter.projection fdata, options)
 
 
         scatter
 
+
         timeseries: new Plottable do
-            (view, result, {x-label, x, y, key, values, fill-intervals}:options, continuation) !-->
+            (view, result, {x-label, x, y, x-axis, y-axis, key, values, fill-intervals}:options, continuation) !-->
 
                 <- nv.add-graph
 
-                result := result |> map -> {key: (key it), values: (values it) |> map (-> [(x.f it), (y.f it)]) |> if fill-intervals is not false then (-> fill-intervals-f it, if fill-intervals is true then 0 else fill-intervals) else id} #({key, values})-> {key, values: values |> fill-intervals}
+                result := result |> map -> {
+                    key: (key it)
+                    values: (values it) 
+                        |> map (-> [(x it), (y it)]) 
+                        |> if fill-intervals is not false then (-> fill-intervals-f it, if fill-intervals is true then 0 else fill-intervals) else id
+                }
 
                 chart = nv.models.line-chart!.x (.0) .y (.1)
-                    ..x-axis.tick-format x.axis.format
-                    ..y-axis.tick-format y.axis.format
+                    ..x-axis.tick-format x-axis.format
+                    ..y-axis.tick-format y-axis.format
 
                 <- continuation chart, result
 
@@ -342,16 +396,15 @@ module.exports.get-presentation-context = ->
                 key: (.key)
                 values: (.values)
 
-                x: 
-                    f: (.0)
-                    axis: 
-                        format: (timestamp)-> (d3.time.format \%x) new Date timestamp
-                        label: 'time'
+                x: (.0)
+                x-axis: 
+                    format: (timestamp) -> (d3.time.format \%x) new Date timestamp
+                    label: 'time'
 
-                y: 
-                    f: (.1)
-                    axis:
-                        format: id
+                y: (.1)
+                y-axis:
+                    format: id
+                    label: 'Y'
 
             }
 
