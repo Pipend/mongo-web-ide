@@ -50,6 +50,10 @@
     "vinyl-source-stream": "^1.0.0",
     "watchify": "^2.1.1"
   },
+  "repository" :{ 
+    "type" : "git",
+    "url" : "https://github.com/Mobitrans/mongo-web-ide.git "
+  },
   "devDependencies": {
     "gulp": "^3.8.10"
   }

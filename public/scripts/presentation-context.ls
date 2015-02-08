@@ -1,7 +1,24 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{Obj, id, any, average, concat-map, drop, each, filter, find, foldr1, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{Obj, Str, id, any, average, concat-map, drop, each, filter, find, foldr1, foldl, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+
+# [[key, val]] -> [[key, val]]
+fill-intervals = (v, default-value = 0) ->
+
+    gcd = (a, b) -> match b
+        | 0 => a
+        | _ => gcd b, (a % b)
+
+    x-scale = v |> map (.0)
+    x-step = x-scale |> foldr1 gcd
+    max-x-scale = maximum x-scale
+    min-x-scale = minimum x-scale
+    [0 to (max-x-scale - min-x-scale) / x-step]
+        |> map (i)->
+            x-value = min-x-scale + x-step * i
+            [, y-value]? = v |> find ([x])-> x == x-value
+            [x-value, y-value or default-value]
 
 # recursively extend a with b
 rextend = (a, b) -->
@@ -25,8 +42,30 @@ class Plottable
 
 # Runs a Plottable
 plot = (p, view, result) -->
-  p._plotter view, result
+    p._plotter view, result
 
+
+download_ = (f, type, result) -->
+    blob = new Blob [f result], type: type
+    a = document.create-element \a
+    url = window.URL.create-objectURL blob
+    a.href = url
+    a.download = "file.json"
+    document.body.append-child a
+    a.click!
+    window.URL.revoke-objectURL url
+
+
+json-to-csv = (obj) ->
+    cols = obj.0 |> Obj.keys
+    (cols |> (Str.join \,)) + "\n" + do ->
+        obj
+            |> foldl do
+                (acc, a) ->
+                    acc.push <| cols |> (map (c) -> a[c]) |> Str.join \,
+                    acc
+                []
+            |> Str.join "\n"
 
 # Attaches options to a Plottable
 with-options = (p, o) ->
@@ -121,33 +160,39 @@ module.exports.get-presentation-context = ->
                         height: if direction == \horizontal then "100%" else "#{size * 100}%"
                     }
 
-    json = (view, result) !-> 
+
+    download-mime_ = (type, result) -->
+        [f, mime, g] = match type
+            | \json => [(-> JSON.stringify it, null, 4), \text/json, json]
+            | \csv => [json-to-csv, \text/csv, csv]
+        download_ f, mime, result
+        g
+
+    download-and-plot = (type, p, view, result) -->
+        download-mime_ type, result
+        (plot p) view, result
+
+    download = (type, view, result) -->
+        g = download-mime_ type, result
+        g view, result
+
+
+    json = (view, result) !--> 
         pre = $ "<pre/>"
             ..html JSON.stringify result, null, 4
+        ($ view).append pre
+
+    csv = (view, result) !-->
+        pre = $ "<pre/>"
+            ..html json-to-csv result
         ($ view).append pre
 
     plot-chart = (view, result, chart)->
         d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
 
-    # [[key, val]] -> [[key, val]]
-    fill-intervals = (v, default-value = 0) ->
-
-        gcd = (a, b) -> match b
-            | 0 => a
-            | _ => gcd b, (a % b)
-
-        x-scale = v |> map (.0)
-        x-step = x-scale |> foldr1 gcd
-        max-x-scale = maximum x-scale
-        min-x-scale = minimum x-scale
-        [0 to (max-x-scale - min-x-scale) / x-step]
-            |> map (i)->
-                x-value = min-x-scale + x-step * i
-                [, y-value]? = v |> find ([x])-> x == x-value
-                [x-value, y-value or default-value]
         
-
     fill-intervals-f = fill-intervals
+
 
     histogram = new Plottable do 
         (view, result, {x, y, key, values, transition-duration, reduce-x-ticks, rotate-labels, show-controls, group-spacing, show-legend}, continuation) !-->
@@ -239,6 +284,10 @@ module.exports.get-presentation-context = ->
     # all functions defined here are accessibly by the presentation code
     presentaion-context = {        
 
+        download
+
+        download-and-plot
+
         Plottable
 
         project
@@ -260,6 +309,8 @@ module.exports.get-presentation-context = ->
         layout-vertical: layout \vertical
 
         json
+
+        csv
 
         pjson: new Plottable do
             (view, result, {pretty, space}, continuation) !-->
