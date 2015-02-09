@@ -231,7 +231,7 @@ module.exports.get-presentation-context = ->
 
 
     scatter = new Plottable do 
-        (view, result, {tooltip, show-legend, color, transition-duration, x, y, x-axis, y-axis}, continuation)!->
+        (view, result, {tooltip, show-legend, color, transition-duration, x, y, x-axis, y-axis, margin}, continuation)!->
 
             <- nv.add-graph
 
@@ -240,10 +240,11 @@ module.exports.get-presentation-context = ->
                 .show-dist-y y-axis.show-dist
                 .transition-duration transition-duration
                 .color color
-                .showDistX x-axis.show-dist
-                .showDistY y-axis.show-dist
+                .show-dist-x x-axis.show-dist
+                .show-dist-y y-axis.show-dist
                 .x x
                 .y y
+                .margin margin
 
 
             chart
@@ -277,6 +278,7 @@ module.exports.get-presentation-context = ->
                 format: d3.format '.02f'
                 show-dist: true
             y: (.y)
+            margin: {top: 30, right: 20, bottom: 50, left: 75}
 
         }         
 
