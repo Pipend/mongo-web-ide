@@ -57,7 +57,7 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-execute-mongo-aggregation-pipeline = (server-name, database, collection, query, callback) !-->
+execute-mongo-query = (type, server-name, database, collection, query, callback) !-->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
@@ -69,12 +69,33 @@ execute-mongo-aggregation-pipeline = (server-name, database, collection, query, 
     err, mongo-client <- mongo-client.open 
     return callback err, null if !!err
 
-    # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use: config.allow-disk-use}
+    # perform query & close db connection
+    f = switch type
+            | \aggregation => execute-mongo-aggregation-pipeline
+            | \map-reduce => execute-mongo-map-reduce
+            | _ => (..., callback) -> 
+                callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
+
+    err, result <- f (mongo-client.db database .collection collection), query
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
     callback null, result
+
+execute-mongo-aggregation-pipeline = (collection, query, callback) !-->
+    err, result <-  collection.aggregate query, {allow-disk-use: config.allow-disk-use}
+    callback err, result
+
+execute-mongo-map-reduce = (collection, query, callback) !-->
+    err, result <- collection.map-reduce do
+        query.$map
+        query.$reduce
+        query.$options <<< finalize: query.$finalize
+
+    callback err, result
+
+
+
 
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters}:document, callback) !-->
 
@@ -138,10 +159,17 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
     else
 
-        [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
+        # map-reduce
+        [err, transpiled-code] = compile-and-execute-livescript ("{\n#{query}\n}"), query-context
         return callback err, null if !!err
 
-        err, result <- execute-mongo-aggregation-pipeline server-name, database, collection, transpiled-code
+        type = if !!transpiled-code.$map and !!transpiled-code.$reduce then \map-reduce else \aggregation
+
+        if \aggregation == type
+            [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
+            return callback err, null if !!err
+
+        err, result <- execute-mongo-query type, server-name, database, collection, transpiled-code
         return callback err, null if !!err
 
         callback null, query-cache[key] = result
@@ -168,7 +196,7 @@ get-all-keys-recursively = (object, filter-function)->
         [key]
 
 get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json view, result"} <<< config.default-connection-details
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "id", presentation: "json"} <<< config.default-connection-details
 
 get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
@@ -450,7 +478,7 @@ app.get \/keywords/queryContext, (req, res) ->
 #
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
 
-    err, results <- execute-mongo-aggregation-pipeline req.params.server-name, req.params.database, req.params.collection,
+    err, results <- execute-mongo-query \aggregation, req.params.server-name, req.params.database, req.params.collection,
         [
             {
                 $sort: _id: -1
