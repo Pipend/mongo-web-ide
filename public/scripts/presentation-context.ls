@@ -45,12 +45,12 @@ plot = (p, view, result) -->
     p._plotter view, result
 
 
-download_ = (f, type, result) -->
+download_ = (f, type, extension, result) -->
     blob = new Blob [f result], type: type
     a = document.create-element \a
     url = window.URL.create-objectURL blob
     a.href = url
-    a.download = "file.json"
+    a.download = "file.#extension"
     document.body.append-child a
     a.click!
     window.URL.revoke-objectURL url
@@ -163,8 +163,8 @@ module.exports.get-presentation-context = ->
 
     download-mime_ = (type, result) -->
         [f, mime, g] = match type
-            | \json => [(-> JSON.stringify it, null, 4), \text/json, json]
-            | \csv => [json-to-csv, \text/csv, csv]
+            | \json => [(-> JSON.stringify it, null, 4), \text/json, \json, json]
+            | \csv => [json-to-csv, \text/csv, \csv, csv]
         download_ f, mime, result
         g
 
@@ -416,6 +416,58 @@ module.exports.get-presentation-context = ->
             cell.call brush
 
 
+    # from http://bl.ocks.org/benvandyke/8459843
+    regression = new Plottable do
+        (view, result, {margin, x, y, y-range}:options, continuation) !->
+            width = view.client-width - margin.left - margin.right
+            height = view.client-height - margin.top - margin.bottom
+
+            svg = d3.select view .append \svg
+                .attr \class, \regression
+                .attr \width, width + margin.left + margin.right
+                .attr \height, height + margin.top + margin.bottom
+                .append \g
+                .attr \transform, "translate(" + margin.left + "," + margin.top + ")"
+
+            svg.append \g .attr \class, 'y axis'
+            svg.append \g .attr \class, 'x axis'
+
+            x-scale = d3.scale.linear!.range [0, width]
+                ..domain [(result |> (map x) >> minimum), (result |> (map x) >> maximum)]
+            y-scale = d3.scale.linear!.range [height, 0]
+                ..domain [(y-range.min result), (y-range.max result)]
+
+
+            x-axis = d3.svg.axis!
+                .scale x-scale
+                .orient \bottom
+
+            y-axis = d3.svg.axis!
+                .scale y-scale
+                .orient \left
+
+            svg.select-all \circle
+                .data result
+                .enter!.append \circle
+                .attr "cx", (d) -> x-scale (x d)
+                .attr "cy", (d) -> y-scale (y d)
+                .attr "r", 3
+                .style "fill", (d) -> "blue"
+
+
+
+
+
+
+        {
+            x: (.x)
+            y: (.y)
+            y-range: 
+                min: (map (.y)) >> minimum
+                max: (map (.y)) >> maximum
+            margin: {top: 20, right:20, bottom: 50, left: 20}
+        }
+
 
 
 
@@ -555,6 +607,8 @@ module.exports.get-presentation-context = ->
         scatter
 
         correlation-matrix
+
+        regression
 
         timeseries: new Plottable do
             (view, result, {x-label, x, y, x-axis, y-axis, key, values, fill-intervals}:options, continuation) !-->
