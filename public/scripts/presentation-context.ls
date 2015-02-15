@@ -135,12 +135,11 @@ module.exports.get-presentation-context = ->
                     child-view = document.create-element \div
                         ..style <<< {                            
                             overflow: \auto
-                            position: \absolute                            
+                            position: \absolute   
                         }
                         ..class-name = direction
                     view.append-child child-view
-                    plot plotter, child-view, result
-                    {size, child-view}
+                    {size, child-view, plotter, result}
 
             sizes = child-view-sizes 
                 |> map (.size)
@@ -148,11 +147,11 @@ module.exports.get-presentation-context = ->
 
             default-size = (1 - (sum sizes)) / (child-view-sizes.length - sizes.length)
 
-            child-view-sizes = child-view-sizes |> map ({child-view, size})-> {child-view, size: (size or default-size)}
+            child-view-sizes = child-view-sizes |> map ({child-view, size, plotter, result})-> {child-view, size: (size or default-size), plotter, result}
                 
             [0 til child-view-sizes.length]
                 |> each (i)->
-                    {child-view, size} = child-view-sizes[i]                    
+                    {child-view, size, plotter, result} = child-view-sizes[i]                    
                     position = take i, child-view-sizes
                         |> map ({size})-> size
                         |> sum
@@ -162,6 +161,7 @@ module.exports.get-presentation-context = ->
                         width: if direction == \horizontal then "#{size * 100}%" else "100%"
                         height: if direction == \horizontal then "100%" else "#{size * 100}%"
                     }
+                    plot plotter, child-view, result
 
 
     download-mime_ = (type, result) -->
@@ -457,7 +457,7 @@ module.exports.get-presentation-context = ->
                 ..domain [(result |> map size |> minimum), (result |> map size |> maximum)]
 
 
-            svg = d3.select view .append \svg
+            svg = d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg
                 .attr \class, \regression
                 .attr \width, width + margin.left + margin.right
                 .attr \height, height + margin.top + margin.bottom
