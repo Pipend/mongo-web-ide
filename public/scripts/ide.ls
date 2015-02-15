@@ -4,6 +4,8 @@ ace = require \brace
 # usage: ..set-mode \ace/mode/livescript
 require \brace/theme/monokai
 require \brace/mode/livescript
+require \brace/ext/searchbox
+require \brace/ext/linking
 
 # modifies the ace editor config
 # usage: ..set-options {enable-basic-autocompletion: true}
@@ -54,6 +56,14 @@ create-livescript-editor = (element-id)->
             line = editor.session.getTextRange range
             if command.name == "insertstring" and (/^\$[a-zA-Z]*$/.test args or /.*(\.|\s+[a-zA-Z\$\"\'\(\[\{])$/.test line)
                 editor.execCommand \startAutocomplete
+        ..on \click, ({dom-event:{meta-key}})-> 
+            return if !meta-key
+            {row, column} = editor.get-cursor-position!
+            session = editor.get-session!            
+            current-token = session.get-token-at row, column
+            previous-token = (session.get-tokens row)[current-token.index - 2]
+            window.open "/branch/#{current-token.value.substr 1}" if previous-token.value == \run-latest-query
+                    
 
 # makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
