@@ -22,6 +22,7 @@
     "cors": "^2.5.2",
     "cssify": "^0.6.0",
     "d3-browserify": "git+https://github.com/furqanZafar/d3-browserify.git",
+    "d3-tip": "^0.6.7",
     "ejs": "^1.0.0",
     "express": "^4.10.1",
     "express-session": "^1.9.2",
@@ -50,9 +51,9 @@
     "vinyl-source-stream": "^1.0.0",
     "watchify": "^2.1.1"
   },
-  "repository" :{ 
-    "type" : "git",
-    "url" : "https://github.com/Mobitrans/mongo-web-ide.git "
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mobitrans/mongo-web-ide.git "
   },
   "devDependencies": {
     "gulp": "^3.8.10"
