@@ -5,7 +5,6 @@ ace = require \brace
 require \brace/theme/monokai
 require \brace/mode/livescript
 require \brace/ext/searchbox
-require \brace/ext/linking
 
 # modifies the ace editor config
 # usage: ..set-options {enable-basic-autocompletion: true}
@@ -234,30 +233,27 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
                     conflict-dialog do
                         queries: queries-in-between
                         on-resolved: (resolution)-> 
-
-                            if resolution == \new-commit
-
+                            match resolution
                                 # option #1: create a new commit & place it at the head
-                                save-and-push-state {} <<< document-state <<< {
-                                    query-id: encoded-time                    
-                                    parent-id: get-parent-query-id resolution
-                                }
-
-                            else if resolution == \fork
+                                | \new-commit =>
+                                    save-and-push-state {} <<< document-state <<< {
+                                        query-id: encoded-time                    
+                                        parent-id: get-parent-query-id resolution
+                                    }
 
                                 # option #2: fork a new branch
-                                save-and-push-state {} <<< document-state <<< {
-                                    query-id: encoded-time
-                                    branch-id: encoded-time
-                                    parent-id: get-parent-query-id resolution
-                                }
-
-                            else if resolution == \reset
+                                | \fork 
+                                    save-and-push-state {} <<< document-state <<< {
+                                        query-id: encoded-time
+                                        branch-id: encoded-time
+                                        parent-id: get-parent-query-id resolution
+                                    }
 
                                 # option #3: delete local storage and reset to history.state
-                                return if !confirm "Are you sure you want to reset your changes?"
-                                client-storage.delete-document-state query-id
-                                update-dom-with-document-state history.state
+                                | \reset =>
+                                    return if !confirm "Are you sure you want to reset your changes?"
+                                    client-storage.delete-document-state query-id
+                                    update-dom-with-document-state history.state
 
                             
                     conflict-dialog-container
@@ -265,7 +261,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
             # save the state, reset local storage and update history
             save-and-push-state = (document-state)->
 
-                (err) <- save-to-server document-state
+                err <- save-to-server document-state
 
                 if !!err                    
 
@@ -302,9 +298,9 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
 
                 # the parent id of forked queries is computed at the time of there creation
                 new-parent-id = match branch-id
-                | \local => null
-                | \local-fork => parent-id
-                | otherwise => query-id
+                    | \local => null
+                    | \local-fork => parent-id
+                    | _ => query-id
 
                 save-and-push-state {} <<< document-state <<< {
                     query-id: encoded-time
@@ -381,7 +377,7 @@ resize-ui = ->
 save-to-server = (document-state, callback)->
     save-request-promise = $.post \/save, (JSON.stringify document-state, null, 4)
         ..done (response)-> callback null
-        ..fail ({response-text})-> callback "SERVER ERROR: #{response-text}"
+        ..fail ({response-text}?)-> callback (response-text or "SERVER ERROR")
 
 # returns true if the cache checkbox in the UI is enabled
 should-cache = -> ($ '#cache:checked' .length) > 0
@@ -620,35 +616,8 @@ $ ->
                 client-storage.get-document-state history.state.query-id
                 false
 
-
     $ \#commit-tree .on \click, ->
         window.open "/tree/#{history.state.query-id}"
-
-        # err, queries <- queries-in-same-tree history.state.query-id
-        # return console.log err if !!err
-        # draw-commit-tree do
-        #     (d3.select \.commit-tree)
-        #     600
-        #     240
-        #     queries
-        #     [
-        #         {
-        #             key: \queryId
-        #             name: \Id
-        #         }
-        #         {
-        #             key: \branchId 
-        #             name: \Branch
-        #         }
-        #         {
-        #             key: \queryName
-        #             name: \Name
-        #         }
-        #         {
-        #             key: \creationTime
-        #             name: \Date
-        #         }
-        #     ]
 
     $ \#multi-query .on \change, -> 
         update-remote-state-button get-document-state history.state, window.remote-document-states
