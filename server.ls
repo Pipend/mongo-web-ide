@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, Obj} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -159,15 +159,16 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
     else
 
-        # map-reduce
-        [err, transpiled-code] = compile-and-execute-livescript ("{\n#{query}\n}"), query-context
+        [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
         return callback err, null if !!err
-
-        type = if !!transpiled-code.$map and !!transpiled-code.$reduce then \map-reduce else \aggregation
-
-        if \aggregation == type
-            [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
+        
+        if '$map' in (transpiled-code |> concat-map Obj.keys)
+            [err, transpiled-code] = compile-and-execute-livescript ("{\n#{query}\n}"), query-context
             return callback err, null if !!err
+            type = \map-reduce
+        else
+            type = \aggregation
+        
 
         err, result <- execute-mongo-query type, server-name, database, collection, transpiled-code
         return callback err, null if !!err
