@@ -5,22 +5,7 @@ require \prelude-ls
 d3-tip = require \d3-tip
 d3-tip d3
 
-
-# [[key, val]] -> [[key, val]]
-{fill-intervals} = require \./presentation-plottables/_utils.ls
-
-# recursively extend a with b
-rextend = (a, b) -->
-    btype = typeof! b
-
-    return b if any (== btype), <[Boolean Number String Function]>
-    return b if a is null or (\Undefined == typeof! a)
-
-    bkeys = Obj.keys b
-    return a if bkeys.length == 0
-    bkeys |> each (key) ->
-        a[key] = a[key] `rextend` b[key]
-    a
+{fill-intervals, rextend} = require \./presentation-plottables/_utils.ls
 
 
 # Plottable is a monad, run it by plot funciton
@@ -230,13 +215,5 @@ module.exports.get-presentation-context = ->
 
         # [[key, val]] -> [[key, val]]
         fill-intervals
-
-        trendline: (v, sample-size)->
-            [0 to v.length - sample-size]
-                |> map (i)->
-                    new-y = [i til i + sample-size] 
-                        |> map -> v[it].1
-                        |> average
-                    [v[i + sample-size - 1].0, new-y]
 
     }    
