@@ -109,7 +109,7 @@ execute-query-and-display-results = do ->
         # query, transform & plot
         cache = should-cache!
 
-        (err, result) <- execute-query query, parameters, server-name, database, collection, multi-query, cache
+        err, result <- execute-query query, parameters, server-name, database, collection, multi-query, cache
 
         # hide the preloader
         busy := false
@@ -140,11 +140,21 @@ execute-query-and-display-results = do ->
 
         parameters-object ?= {}
 
-        [err, result] = compile-and-execute-livescript transformation, {result: JSON.parse result} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls)
-        return display-error "ERROR IN THE TRANSFORMATION CODE: #{err}" if !!err
+        [err, func] = compile-and-execute-livescript "(#transformation\n)", {} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls)
+        return display-error "ERROR IN THE TRANSFORMATION COMPILATION: #{err}" if !!err
+        try
+            result = func (JSON.parse result)
+        catch ex
+            return display-error "ERROR IN THE TRANSFORMATION EXECUTAION: #{ex.to-string!}"
 
-        [err, result] = compile-and-execute-livescript presentation, {result, d3, $, view: ($ \.output .get 0)} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
-        return display-error "ERROR IN THE PRESENTATION CODE: #{err}" if !!err
+
+        [err, func] = compile-and-execute-livescript "(#presentation\n)", {d3, $} <<< get-transformation-context! <<< parameters-object <<< (require \prelude-ls) <<< get-presentation-context!
+        return display-error "ERROR IN THE PRESENTATION COMPILATION: #{err}" if !!err
+        try
+            func ($ '.output' .get 0), result
+        catch ex
+            return display-error "ERROR IN THE PRESENTATION EXECUTAION: #{ex.to-string!}"
+
 
 # if the local state has diverged from remote state, creates a new tree
 # returns the url of the forked query 

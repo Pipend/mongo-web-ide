@@ -1,192 +1,190 @@
 # the first require is used by browserify to import the prelude-ls module
 # the second require is defined in the prelude-ls module and exports the object
 require \prelude-ls
-{Obj, average, concat-map, drop, each, filter, find, foldr1, id, map, maximum, minimum, obj-to-pairs, sort, sum, tail, take, unique} = require \prelude-ls
+{Obj, Str, id, any, average, concat-map, drop, each, filter, find, foldr1, foldl, map, maximum, minimum, obj-to-pairs, pairs-to-obj, sort, sum, tail, take, unique} = require \prelude-ls
+d3-tip = require \d3-tip
+d3-tip d3
 
-# all functions defined here are accessibly by the presentation code
+{fill-intervals, rextend} = require \./presentation-plottables/_utils.ls
+
+
+# Plottable is a monad, run it by plot funciton
+class Plottable
+    (@plotter, @options = {}, @continuations = ((..., callback) -> callback null), @projection = id) ->
+    _plotter: (view, result) ~>
+        @plotter view, (@projection result, @options), @options, @continuations
+
+# Runs a Plottable
+plot = (p, view, result) -->
+    p._plotter view, result
+
+
+
+# Attaches options to a Plottable
+with-options = (p, o) ->
+  new Plottable do
+    p.plotter
+    {} `rextend` p.options `rextend` o
+    p.continuations
+    p.projection
+ 
+ 
+acompose = (f, g) --> (chart, callback) ->
+  err, fchart <- f chart
+  return callback err, null if !!err
+  g fchart, callback
+ 
+ 
+amore = (p, c) ->
+  new Plottable do
+    p.plotter
+    {} `rextend` p.options
+    c
+    p.projection
+ 
+ 
+more = (p, c) ->
+  new Plottable do
+    p.plotter
+    {} `rextend` p.options
+    (...init, callback) -> 
+      try 
+        c ...init
+      catch ex
+        return callback ex
+      callback null
+    p.projection
+ 
+
+# projects the data of a Plottable with f
+project = (f, p) -->
+  new Plottable do
+    p.plotter
+    p.options
+    p.continuations
+    (data, options) -> 
+        fdata = f data, options
+        p.projection fdata, options
+
+
+download_ = (f, type, extension, result) -->
+    blob = new Blob [f result], type: type
+    a = document.create-element \a
+    url = window.URL.create-objectURL blob
+    a.href = url
+    a.download = "file.#extension"
+    document.body.append-child a
+    a.click!
+    window.URL.revoke-objectURL url
+
+
+json-to-csv = (obj) ->
+    cols = obj.0 |> Obj.keys
+    (cols |> (Str.join \,)) + "\n" + do ->
+        obj
+            |> foldl do
+                (acc, a) ->
+                    acc.push <| cols |> (map (c) -> a[c]) |> Str.join \,
+                    acc
+                []
+            |> Str.join "\n"
+
+
+download-mime_ = (type, result) -->
+    [f, mime, g] = match type
+        | \json => [(-> JSON.stringify it, null, 4), \text/json, \json, json]
+        | \csv => [json-to-csv, \text/csv, \csv, csv]
+    download_ f, mime, result
+    g
+
+
+download-and-plot = (type, p, view, result) -->
+    download-mime_ type, result
+    (plot p) view, result
+
+
+download = (type, view, result) -->
+    g = download-mime_ type, result
+    g view, result
+
+
+json = (view, result) !--> 
+    pre = $ "<pre/>"
+        ..html JSON.stringify result, null, 4
+    ($ view).append pre
+
+
+csv = (view, result) !-->
+    pre = $ "<pre/>"
+        ..html json-to-csv result
+    ($ view).append pre
+
+
+plot-chart = (view, result, chart)->
+    d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
+
+    
+fill-intervals-f = fill-intervals 
+
+plottables = {
+
+    download
+
+    download-and-plot
+
+    Plottable
+
+    project
+
+    with-options
+
+    plot
+
+    more
+
+    amore
+
+    json
+
+    csv
+
+} <<< {
+
+    pjson: new Plottable do
+        (view, result, {pretty, space}, continuation) !-->
+            pre = $ "<pre/>"
+                ..html if not pretty then JSON.stringify result else JSON.stringify result, null, space
+            ($ view).append pre
+        {pretty: true, space: 4}
+
+    table: (require \./presentation-plottables/table.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    histogram1: (require \./presentation-plottables/histogram1.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    histogram: (require \./presentation-plottables/histogram.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    stacked-area: (require \./presentation-plottables/stacked-area.ls) {Plottable, nv, d3, plot-chart, plot}
+
+    scatter1: (require \./presentation-plottables/scatter1.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    scatter: (require \./presentation-plottables/scatter.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    correlation-matrix: (require \./presentation-plottables/correlation-matrix.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    regression: (require \./presentation-plottables/regression.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    timeseries1: (require \./presentation-plottables/timeseries1.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    timeseries: (require \./presentation-plottables/timeseries.ls) {Plottable, d3, nv, plot-chart, plot}
+
+    multi-bar-horizontal: (require \./presentation-plottables/multi-bar-horizontal.ls) {Plottable, d3, nv, plot-chart, plot}
+
+} <<< (require \./presentation-plottables/layout.ls) {Plottable, d3, nv, plot-chart, plot}
+
 module.exports.get-presentation-context = ->
 
-    layout = (view, direction, ...)!->
-
-            functions = drop 2, Array.prototype.slice.call arguments
-
-            child-views = [0  til functions.length]
-                |> map (i)->
-                    child-view = document.create-element \div
-                        ..style <<< {
-                            overflow: \auto
-                            position: \absolute
-                        }
-                        ..class-name = direction
-                    view.append-child child-view
-                    [child-view, functions[i](child-view)]
-
-            sizes = child-views 
-                |> filter ([, size])-> !!size and typeof size == \number
-                |> map ([, size])-> size                 
-
-            default-size = (1 - (sum sizes)) / (child-views.length - sizes.length)
-
-            child-views-with-size = child-views |> map ([child-view, size])-> [child-view, (size or default-size)]
-                
-            [0 til child-views-with-size.length]
-                |> each (i)->
-                    [child-view, size] = child-views-with-size[i]
-                    position = take i, child-views-with-size
-                        |> map ([, size])-> size
-                        |> sum
-                    child-view.style <<< {
-                        left: if direction == \horizontal then "#{position * 100}%" else "0%"
-                        top: if direction == \horizontal then "0%" else "#{position * 100}%"
-                        width: if direction == \horizontal then "#{size * 100}%" else "100%"
-                        height: if direction == \horizontal then "100%" else "#{size * 100}%"
-                    }
-
-
-    plot-chart = (view, result, chart)->
-        d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg .datum result .call chart        
-
-    # [[key, val]] -> [[key, val]]
-    fill-intervals = (v, default-value = 0) ->
-
-        gcd = (a, b) -> match b
-            | 0 => a
-            | _ => gcd b, (a % b)
-
-        x-scale = v |> map (.0)
-        x-step = x-scale |> foldr1 gcd
-        max-x-scale = maximum x-scale
-        min-x-scale = minimum x-scale
-        [0 to (max-x-scale - min-x-scale) / x-step]
-            |> map (i)->
-                x-value = min-x-scale + x-step * i
-                [, y-value]? = v |> find ([x])-> x == x-value
-                [x-value, y-value or default-value]
-        
-
     # all functions defined here are accessibly by the presentation code
-    {} <<< (require \./transformation-context.ls).get-transformation-context! <<< {        
-
-        layout-horizontal: (view, ...)!-> layout.apply @, [view, \horizontal] ++ tail Array.prototype.slice.call arguments
-
-        layout-vertical: (view, ...)!-> layout.apply @, [view, \vertical] ++ tail Array.prototype.slice.call arguments
-
-        json: (view, result)!--> 
-            pre = $ "<pre/>"
-                ..html JSON.stringify result, null, 4
-            ($ view).append pre
-
-        table: (view, result)!--> 
-
-            cols = result.0 |> Obj.keys |> filter (.index-of \$ != 0)
-            
-            #todo: don't do this if the table is already present
-            $table = d3.select view .append \pre .append \table
-            $table.append \thead .append \tr
-            $table.append \tbody
-
-            $table.select 'thead tr' .select-all \td .data cols
-                ..enter!
-                    .append \td
-                ..exit!.remove!
-                ..text id
-
-            
-            $table.select \tbody .select-all \tr .data result
-                ..enter!
-                    .append \tr
-                    .attr \style, (.$style)
-                ..exit!.remove!
-                ..select-all \td .data obj-to-pairs >> (filter ([k]) -> (cols.index-of k) > -1)
-                    ..enter!
-                        .append \td
-                    ..exit!.remove!
-                    ..text (.1)        
-        
-        plot-histogram: (view, result)!-->
-
-            <- nv.add-graph
-
-            chart = nv.models.multi-bar-chart!
-                .x (.label)
-                .y (.value)
-
-            plot-chart view, result, chart
-            
-            chart.update!
-
-        plot-stacked-area: (view, result, {y-axis-format = (d3.format ',')})!->
-
-            <- nv.add-graph 
-
-            all-values = result |> concat-map (.values |> concat-map (.0)) |> unique |> sort
-            result := result |> map ({key, values}) ->
-                key: key
-                values: all-values |> map ((v) -> [v, values |> find (.0 == v) |> (?.1 or 0)])
-
-            chart = nv.models.stacked-area-chart!
-                .x (.0)
-                .y (.1)
-                .useInteractiveGuideline true
-                .show-controls true
-                .clip-edge true
-
-            chart
-                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-                ..y-axis.tick-format y-axis-format
-            
-            plot-chart view, result, chart
-            
-            chart.update!
-            
-        plot-scatter: (view, result, uoptions, callback = $.noop)!->
-
-            options = {tooltip: null, x-axis-format: (d3.format '.02f'), y-axis-format: (d3.format '.02f'), show-legend: true} <<< uoptions
-            console.log options
-            <- nv.add-graph
-
-            chart = nv.models.scatter-chart!
-                .show-dist-x true
-                .show-dist-y true
-                .transition-duration 350
-                .color d3.scale.category10!.range!
-
-            chart
-                ..scatter.only-circles false
-
-                ..tooltip-content (key, , , {point}) -> 
-                    (options.tooltip or (key) -> '<h3>' + key + '</h3>') key, point
-
-                ..x-axis.tick-format options.x-axis-format
-                ..y-axis.tick-format options.y-axis-format
-
-            chart.show-legend !!options.show-legend
-            plot-chart view, result, chart
-            
-            
-            chart.update!
-
-            callback chart            
-
-        plot-timeseries: (view, result, options = {fill-intervals: true}, callback = $.noop) !->
-
-            <- nv.add-graph
-
-            if options.fill-intervals
-                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
-
-            chart = nv.models.line-chart!
-                .x (.0)
-                .y (.1)
-            chart
-                ..x-axis.tick-format (timestamp)-> (d3.time.format \%x) new Date timestamp
-            
-            plot-chart view, result, chart
-
-            chart.update!
-
-            callback chart
-
+    presentaion-context = {} <<< plottables <<< {        
 
         plot-line-bar: (view, result, {
             fill-intervals = true
@@ -213,13 +211,9 @@ module.exports.get-presentation-context = ->
             plot-chart view, result, chart
 
             chart.update!
-            
-        trendline: (v, sample-size)->
-            [0 to v.length - sample-size]
-                |> map (i)->
-                    new-y = [i til i + sample-size] 
-                        |> map -> v[it].1
-                        |> average
-                    [v[i + sample-size - 1].0, new-y]
+
+
+        # [[key, val]] -> [[key, val]]
+        fill-intervals
 
     }    

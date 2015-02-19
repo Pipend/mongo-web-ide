@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, foldr1, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -57,7 +57,7 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-execute-mongo-aggregation-pipeline = (server-name, database, collection, query, callback) !-->
+execute-mongo-query = (type, server-name, database, collection, query, callback) !-->
 
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
@@ -69,12 +69,33 @@ execute-mongo-aggregation-pipeline = (server-name, database, collection, query, 
     err, mongo-client <- mongo-client.open 
     return callback err, null if !!err
 
-    # perform aggregation & close db connection
-    err, result <- mongo-client.db database .collection collection .aggregate query, {allow-disk-use: config.allow-disk-use}
+    # perform query & close db connection
+    f = switch type
+            | \aggregation => execute-mongo-aggregation-pipeline
+            | \map-reduce => execute-mongo-map-reduce
+            | _ => (..., callback) -> 
+                callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
+
+    err, result <- f (mongo-client.db database .collection collection), query
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
     callback null, result
+
+execute-mongo-aggregation-pipeline = (collection, query, callback) !-->
+    err, result <-  collection.aggregate query, {allow-disk-use: config.allow-disk-use}
+    callback err, result
+
+execute-mongo-map-reduce = (collection, query, callback) !-->
+    err, result <- collection.map-reduce do
+        query.$map
+        query.$reduce
+        query.$options <<< finalize: query.$finalize
+
+    callback err, result
+
+
+
 
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters}:document, callback) !-->
 
@@ -140,8 +161,16 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
         [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
         return callback err, null if !!err
+        
+        if '$map' in (transpiled-code |> concat-map Obj.keys)
+            [err, transpiled-code] = compile-and-execute-livescript ("{\n#{query}\n}"), query-context
+            return callback err, null if !!err
+            type = \map-reduce
+        else
+            type = \aggregation
+        
 
-        err, result <- execute-mongo-aggregation-pipeline server-name, database, collection, transpiled-code
+        err, result <- execute-mongo-query type, server-name, database, collection, transpiled-code
         return callback err, null if !!err
 
         callback null, query-cache[key] = result
@@ -152,8 +181,14 @@ execute-and-transform-query = (query-database, {parameters, transformation}:docu
     return callback err, null if !!err
 
     # apply transformation
-    [err, transformed-result] = compile-and-execute-livescript transformation, (get-transformation-context! <<< (require \prelude-ls) <<< {result} <<< parameters)
-    callback err, transformed-result
+    [err, func] = compile-and-execute-livescript "(#transformation\n)", (get-transformation-context! <<< (require \prelude-ls) <<< parameters)
+    return callback err if !!err
+    try
+        transformed-result = func result
+    catch ex
+        return callback ex.to-string!, null
+
+    callback null, transformed-result
 
 get-all-keys-recursively = (object, filter-function)->
     keys object |> concat-map (key)-> 
@@ -162,7 +197,7 @@ get-all-keys-recursively = (object, filter-function)->
         [key]
 
 get-default-document-state = -> 
-    {query-name: "Unnamed query", query: "$limit: 5", transformation: "result", presentation: "json view, result"} <<< config.default-connection-details
+    {query-name: "Unnamed query", query: "$limit: 5", transformation: "id", presentation: "json"} <<< config.default-connection-details
 
 get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
@@ -444,7 +479,7 @@ app.get \/keywords/queryContext, (req, res) ->
 #
 app.get \/keywords/:serverName/:database/:collection, (req, res)->
 
-    err, results <- execute-mongo-aggregation-pipeline req.params.server-name, req.params.database, req.params.collection,
+    err, results <- execute-mongo-query \aggregation, req.params.server-name, req.params.database, req.params.collection,
         [
             {
                 $sort: _id: -1
