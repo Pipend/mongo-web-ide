@@ -10,7 +10,7 @@ moment = require \moment
 {MongoClient, ObjectID, Server} = require \mongodb
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 vm = require \vm
@@ -111,7 +111,38 @@ execute-query = (query-database, {server-name, database, collection, multi-query
     # context properties that are same for different query types
     query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
 
-    if multi-query
+    if (query.index-of \curl) == 0
+
+        {shell-command, parse} = require \./query-context/shell-command-parser
+
+        result = parse shell-command, query
+
+        return callback "Parsing Error #{result.0.1}" if !!result.0.1
+
+        curl = require \curlrequest
+
+        result := result.0.0.args |> concat-map id
+        url = result |> find (-> !!it.opt) |> (.opt)
+        options = result |> filter (-> !!it.name) |> (map ({name, value}) -> [name, if !!value then value else name]) |> pairs-to-obj
+        options.url = url
+
+        console.log options
+
+        curl.request do
+            options
+            (err, parts) ->
+                return callback err, null if !!err
+                try
+                    result := JSON.parse parts
+                catch error
+                    return callback error.to-string!, null
+                  
+                return callback null, query-cache[key] = result
+
+
+
+
+    else if multi-query
 
         code = """
 (callback) ->
@@ -284,9 +315,16 @@ app = express!
     ..use (require \cookie-parser)!
     ..use (req, res, next)->
         return next! if req.method is not \POST
+        console.log \*****POST*****
         body = ""
-        req.on \data, -> body += it 
-        req.on \end, -> 
+        size = 0
+        req.on \data, -> 
+            size += it.length
+            if size > 4e6
+                res.write-head 413, 'Connection': 'close'
+                res.end "File size exceeded"
+            body += it 
+        req.on \end, ->
             req <<< {body: JSON.parse body}
             next!
     ..use (require \method-override)!
