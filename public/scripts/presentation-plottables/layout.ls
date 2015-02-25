@@ -45,7 +45,7 @@ module.exports = ({Plottable, d3, plot-chart, nv, plot}) ->
     cell: (plotter) -> {plotter}
 
     # wraps a Plottable in cell that has a size (used in layout)
-    scell: (size, plotter) -> {size, plotter}
+    scell: (size, plotter) --> {size, plotter}
 
     layout-horizontal: layout \horizontal
 

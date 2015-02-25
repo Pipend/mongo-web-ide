@@ -4,11 +4,11 @@ fill-intervals-f = fill-intervals
 trend-line-f = trend-line
 
 module.exports = ({Plottable, d3, plot-chart, nv}) -> new Plottable do
-    (view, result, {x-label, x, y, x-axis, y-axis, key, values, fill-intervals, trend-line}:options, continuation) !-->
+    (view, raw-result, {x-label, x, y, x-axis, y-axis, key, values, fill-intervals, trend-line}:options, continuation) !-->
 
         <- nv.add-graph
 
-        result := result |> map -> {
+        result = raw-result |> map -> {
             key: (key it)
             values: (values it) 
                 |> map (-> [(x it), (y it)]) 
