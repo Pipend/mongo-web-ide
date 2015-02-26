@@ -14,6 +14,7 @@ module.exports = ({Plottable, nv, plot-chart}) -> new Plottable (view, result, o
             .append \td
         ..exit!.remove!
         ..text id
+        ..attr \class, id
 
     
     $table.select \tbody .select-all \tr .data result
@@ -25,6 +26,7 @@ module.exports = ({Plottable, nv, plot-chart}) -> new Plottable (view, result, o
             ..enter!
                 .append \td
             ..exit!.remove!
-            ..text (.1)        
+            ..text (.1)    
+            ..attr \class, (.0)    
 
     <- continuation $table, result

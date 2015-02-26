@@ -23,4 +23,4 @@ presentation = ($ \#presentation .html!).replace /\t/g, " "
 [err, func] = compile-and-execute-livescript "(#presentation\n)", {d3, $} <<< get-transformation-context! <<< get-presentation-context! <<< parameters <<< (require \prelude-ls)
 return console.log err if !!err
 
-func {result: transformed-result, view: document.body}
+func document.body, transformed-result

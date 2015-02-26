@@ -28,6 +28,8 @@ module.exports.get-transformation-context = ->
 
         date-from-object-id
 
+        moment: moment
+
         day-to-timestamp: -> it * 86400000
         
         fill-intervals: (v)->

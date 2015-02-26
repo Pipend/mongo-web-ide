@@ -212,7 +212,7 @@ execute-and-transform-query = (query-database, {parameters, transformation}:docu
     return callback err, null if !!err
 
     # apply transformation
-    [err, func] = compile-and-execute-livescript "(#transformation\n)", (get-transformation-context! <<< (require \prelude-ls) <<< parameters)
+    [err, func] = compile-and-execute-livescript "(#transformation\n)", (get-transformation-context! <<< (require \moment) <<< (require \prelude-ls) <<< parameters)
     return callback err if !!err
     try
         transformed-result = func result
@@ -257,6 +257,7 @@ get-query-context = ->
     {
 
         # dependent on mongo operations
+        moment
         bucketize: bucketize
         day-to-timestamp: (field) -> $multiply: [field, 86400000]
         object-id: ObjectID

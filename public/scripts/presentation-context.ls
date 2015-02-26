@@ -60,7 +60,7 @@ more = (p, c) ->
 project = (f, p) -->
   new Plottable do
     p.plotter
-    p.options
+    {} `rextend` p.options
     p.continuations
     (data, options) -> 
         fdata = f data, options
