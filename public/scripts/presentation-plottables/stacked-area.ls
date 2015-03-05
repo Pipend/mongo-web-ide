@@ -11,8 +11,8 @@ module.exports = ({Plottable, plot-chart, d3, nv}) -> new Plottable do
             values: all-values |> map ((v) -> [v, (values d) |> find (-> (x it) == v) |> (-> if !!it then (y it) else (fill-intervals))])
 
         chart = nv.models.stacked-area-chart!
-            .x x
-            .y y
+            .x (.0)
+            .y (.1)
             .use-interactive-guideline use-interactive-guideline
             .show-controls show-controls
             .clip-edge clip-edge
