@@ -57,6 +57,7 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
+#TODO: moved to mongod-db-query
 execute-mongo-query = (type, server-name, database, collection, query, callback) !-->
 
     # retrieve the connection string from config
@@ -76,7 +77,11 @@ execute-mongo-query = (type, server-name, database, collection, query, callback)
             | _ => (..., callback) -> 
                 callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
 
-    err, result <- f (mongo-client.db database .collection collection), query
+    db = mongo-client.db database
+
+    #(require \./ops).cancel-long-running-query 1200000, db, mongo-client, query
+
+    err, result <- f (db.collection collection), query
     mongo-client.close!
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
@@ -90,7 +95,7 @@ execute-mongo-map-reduce = (collection, query, callback) !-->
     err, result <- collection.map-reduce do
         query.$map
         query.$reduce
-        query.$options <<< finalize: query.$finalize
+        query.$options <<< {finalize: query.$finalize}
 
     callback err, result
 
@@ -298,6 +303,7 @@ parse-parameters = (query-value, user-defined-value)->
     | \Number => (if user-defined-value % 1 == 0 then parse-int else parse-float) query-value
     | otherwise => query-value
 
+console.log "Connectin to", config.mongo, config.mongo-options
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
