@@ -515,8 +515,9 @@ $ ->
         # auto complete for mongo collection properties
         {server-name, database, collection} = get-document-state!
 
+        # TODO: get the type of query from somewhere
         query-context-keywords <- $.post "/keywords/mongodb", JSON.stringify {connection: {server-name, database, collection}}
-        #TODO: one call is enough
+
         #query-context-keywords <- $.get "/keywords/queryContext"
         #collection-keywords <- $.get "/keywords/#{server-name}/#{database}/#collection"
 

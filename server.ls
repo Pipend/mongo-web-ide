@@ -75,13 +75,13 @@ execute-query = (query-database, {server-name, database, collection, multi-query
     key = md5 "#{query}, #{server-name}, #{database}, #{collection}, #{JSON.stringify parameters}, #{multi-query}"
     return callback null, query-cache[key] if cache and !!query-cache[key]    
 
-    querier.query do 
+    error, result <- querier.query do 
         {server-name: server-name, database: database, collection: collection, query-database, execute-query}
         query
         parameters
         Math.floor 1000 * Math.random!
-        callback
-    return 
+    return callback error if !!error
+    return callback null, query-cache[key] = result
 
     # context properties that are same for different query types
     query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
