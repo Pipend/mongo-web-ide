@@ -1,5 +1,8 @@
-config = require \./config
+config = require \./../config
+{compile} = require \LiveScript
+{MongoClient, ObjectID, Server} = require \mongodb
 {id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{compile-and-execute-livescript, get-all-keys-recursively} = require \./../utils
 
 # internal utility
 objectify = (a) -> JSON.parse <| JSON.stringify a
@@ -7,7 +10,7 @@ objectify = (a) -> JSON.parse <| JSON.stringify a
 poll = {}
 
 # delegate
-cancel = (db, client, query, start-time, callback) ->
+kill = (db, client, query, start-time, callback) ->
     return if 'connected' != db.serverConfig?._serverState
     db.collection '$cmd.sys.inprog' .findOne (err, data) ->
         try
@@ -61,12 +64,13 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
 
     start-time = new Date!.value-of!
 
-    kill = (kill-callback) ->
-        cancel db, mongo-client, query, start-time, kill-callback
-        delete poll[query-id]
 
 
-    poll[query-id] = {kill}
+    poll[query-id] = {
+        kill: (kill-callback) ->
+                kill db, mongo-client, query, start-time, kill-callback
+                delete poll[query-id]
+    }
 
     set-timeout do 
         kill (kill-error, kill-result) -> 
@@ -82,9 +86,57 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
 
     callback null, result
 
+# private utility
+convert-query-to-valid-livescript = (query)->
+
+    lines = query.split (new RegExp "\\r|\\n")
+        |> filter -> 
+            line = it.trim!
+            !(line.length == 0 || line.0 == \#)
+
+    lines = [0 til lines.length] 
+        |> map (i)-> 
+            line = lines[i]
+            line = (if i > 0 then "},{" else "") + line if line.0 == \$
+            line
+
+    "[{#{lines.join '\n'}}]"
+
+# private utility
+execute-mongo-aggregation-pipeline = (collection, query, callback) !-->
+    err, result <-  collection.aggregate query, {allow-disk-use: config.allow-disk-use}
+    callback err, result
+
+# private utility
+execute-mongo-map-reduce = (collection, query, callback) !-->
+    err, result <- collection.map-reduce do
+        query.$map
+        query.$reduce
+        query.$options <<< {finalize: query.$finalize}
+
+    callback err, result
+
+# used in server.ls for formatting parameters
+export get-query-context = ->
+    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
+    {object-id-from-date, date-from-object-id} = require \./../public/scripts/utils.ls
+    {} <<< (require \./default-query-context.ls)! <<< {
+
+        # dependent on mongo operations
+        day-to-timestamp: (field) -> $multiply: [field, 86400000]
+        timestamp-to-day: bucketize 86400000
+        bucketize: bucketize
+        object-id: ObjectID
+        object-id-from-date: ObjectID . object-id-from-date 
+
+        # independent of any mongo operations
+        date-from-object-id
+    }
+
 # query-id is generated at the client
 export query = ({server-name, database, collection}:connection, query, parameters, query-id, callback) ->
     
+    query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
 
     [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
     return callback err, null if !!err
@@ -96,13 +148,35 @@ export query = ({server-name, database, collection}:connection, query, parameter
     else
         type = \aggregation
 
-    query-id = new Date!.value-of!!
-
     #TODO: get timeout from config
-    execute-mongo-query type, server-name, database, collection, transpiled-code, 60000, query-id, callback
+    execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 60000, callback
 
     
 export cancel = (query-id, callback) ->
     query = poll[query-id]
     return callback (new Error "Query not found #{query-id}") if !query
     query.kill callback
+
+
+export keywords = ({server-name, database, collection}:connection, callback) !-->
+
+    err, results <- execute-mongo-query new Date!.value-of!, \aggregation, server-name, database, collection,
+        [
+            {
+                $sort: _id: -1
+            }
+            {
+                $limit: 10
+            }
+        ]
+        , 10000
+    callback err, null if !!err
+
+    collection-keywords = 
+        results 
+            |> concat-map (-> get-all-keys-recursively it, (k, v)-> typeof v != \function)
+            |> unique
+
+    callback null, do -> 
+        collection-keywords ++ (collection-keywords |> map -> "$#{it}") ++
+        config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)

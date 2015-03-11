@@ -5,37 +5,29 @@ express = require \express
 session = require \express-session
 fs = require \fs
 md5 = require \MD5
-moment = require \moment
-{compile} = require \LiveScript
-{MongoClient, ObjectID, Server} = require \mongodb
+moment = require \moment # TODO: move to query-context
+{compile} = require \LiveScript # TODO: move to utlis
+{MongoClient, ObjectID, Server} = require \mongodb # TODO: move to query-context
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
 {id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
-vm = require \vm
 
 # global variables
 query-cache = {}
 
+
 # utility functions
-compile-and-execute-livescript = (livescript-code, context)->
+{compile-and-execute-livescript} = require \./utils
 
-    die = (err)->
-        [err, null]
+console.log "Connectin to", config.mongo, config.mongo-options
+# connect to mongo-db
+(err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
+return console.log err if !!err
+console.log "successfully connected to #{config.mongo}"
 
-    try 
-        js = compile livescript-code, {bare: true}
-    catch err
-        return die "livescript transpilation error: #{err.to-string!}"
-
-    try 
-        result = vm.run-in-new-context js, context
-    catch err
-        return die "javascript runtime error: #{err.to-string!}"
-
-    [null, result]
-
+# TODO: move to query-context
 # filters out empty lines and lines that begin with comment
 # also encloses the query objects in a collection
 convert-query-to-valid-livescript = (query)->
@@ -57,61 +49,39 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-#TODO: moved to mongod-db-query
 execute-mongo-query = (type, server-name, database, collection, query, callback) !-->
-
-    # retrieve the connection string from config
-    connection-string = config.connection-strings |> find (.name == server-name)
-    return callback (new Error "server name not found"), null if typeof connection-string == \undefined
-
-    # connect to mongo server
-    server = new Server connection-string.host, connection-string.port
-    mongo-client = new MongoClient server, {native_parser: true}
-    err, mongo-client <- mongo-client.open 
-    return callback err, null if !!err
-
-    # perform query & close db connection
-    f = switch type
-            | \aggregation => execute-mongo-aggregation-pipeline
-            | \map-reduce => execute-mongo-map-reduce
-            | _ => (..., callback) -> 
-                callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
-
-    db = mongo-client.db database
-
-    #(require \./ops).cancel-long-running-query 1200000, db, mongo-client, query
-
-    err, result <- f (db.collection collection), query
-    mongo-client.close!
-    return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
-
-    callback null, result
-
-execute-mongo-aggregation-pipeline = (collection, query, callback) !-->
-    err, result <-  collection.aggregate query, {allow-disk-use: config.allow-disk-use}
-    callback err, result
-
-execute-mongo-map-reduce = (collection, query, callback) !-->
-    err, result <- collection.map-reduce do
-        query.$map
-        query.$reduce
-        query.$options <<< {finalize: query.$finalize}
-
-    callback err, result
-
-
+    (require \./query-context/mongo-db-query.ls).execute-mongo-query
+    new Date!.value-of!
+    type
+    server-name
+    database
+    collection
+    query
+    callback
 
 
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters}:document, callback) !-->
 
+    querier = require \./query-context/mongo-db-query.ls
+    if multi-query
+        querier = require \./query-context/multi-query.ls
+
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
-        [err, parameters] = compile-and-execute-livescript parameters, get-query-context!
+        [err, parameters] = compile-and-execute-livescript parameters, querier.get-query-context!
         return callback err, null if !!err
 
     # return cached result if any
     key = md5 "#{query}, #{server-name}, #{database}, #{collection}, #{JSON.stringify parameters}, #{multi-query}"
     return callback null, query-cache[key] if cache and !!query-cache[key]    
+
+    querier.query do 
+        {server-name: server-name, database: database, collection: collection, query-database, execute-query}
+        query
+        parameters
+        Math.floor 1000 * Math.random!
+        callback
+    return 
 
     # context properties that are same for different query types
     query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
@@ -150,19 +120,19 @@ execute-query = (query-database, {server-name, database, collection, multi-query
     else if multi-query
 
         code = """
-(callback) ->
-    fail = (err) !-> callback err, null
-    done = (res) !-> callback null, res
+                (callback) ->
+                    fail = (err) !-> callback err, null
+                    done = (res) !-> callback null, res
 
-#{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-        """
+                #{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
+                """
 
         run-latest-query = (branch-id, parameters, callback)->
 
             err, document <- get-latest-query-in-branch query-database, branch-id
             return callback err, null if !!err
 
-            execute-and-transform-query query-database, (document <<< {parameters}), callback
+            execute-and-transform-query (document <<< {parameters}), callback
 
         [err, transpiled-code] = compile-and-execute-livescript do
             code
@@ -173,7 +143,7 @@ execute-query = (query-database, {server-name, database, collection, multi-query
                     err, document <- get-query-by-id query-id
                     return callback err, null if !!err
 
-                    execute-and-transform-query query-database, (document <<< {parameters}), callback
+                    execute-and-transform-query (document <<< {parameters}), callback
 
                 run-latest-query
 
@@ -211,30 +181,16 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
         callback null, query-cache[key] = result
     
-execute-and-transform-query = (query-database, {parameters, transformation}:document, callback) !-->
+execute-and-transform-query = (require \./utils.ls).execute-and-transform-query query-database, execute-query
 
-    err, result <- execute-query query-database, document
-    return callback err, null if !!err
+get-all-keys-recursively = (require \./utils.ls).get-all-keys-recursively
 
-    # apply transformation
-    [err, func] = compile-and-execute-livescript "(#transformation\n)", (get-transformation-context! <<< (require \moment) <<< (require \prelude-ls) <<< parameters)
-    return callback err if !!err
-    try
-        transformed-result = func result
-    catch ex
-        return callback ex.to-string!, null
-
-    callback null, transformed-result
-
-get-all-keys-recursively = (object, filter-function)->
-    keys object |> concat-map (key)-> 
-        return [] if !filter-function key, object[key]
-        return [key] ++ (get-all-keys-recursively object[key], filter-function)  if typeof object[key] == \object
-        [key]
-
+# TODO: move to query-context
+# TODO: we might need to identify the type of query in the path?
 get-default-document-state = -> 
     {query-name: "Unnamed query", query: "$limit: 5", transformation: "id", presentation: "json"} <<< config.default-connection-details
 
+#TODO: moved to utils
 get-latest-query-in-branch = (query-database, branch-id, callback) !-->
 
     err, results <- query-database.collection \queries .aggregate do 
@@ -253,31 +209,7 @@ get-latest-query-in-branch = (query-database, branch-id, callback) !-->
     return callback "unable to find any query in branch: #{branch-id}", null if typeof results == \undefined || typeof results?.0 == \undefined
     callback null, results.0
 
-get-query-context = ->
-    bucketize = (bucket-size, field) --> $divide: [$subtract: [field, $mod: [field, bucket-size]], bucket-size]
-    parse-date = (s) -> new Date s
-    to-timestamp = (s) -> (moment (new Date s)).unix! * 1000
-    today = -> ((moment!start-of \day .format "YYYY-MM-DDT00:00:00.000") + \Z) |> parse-date
-    {object-id-from-date, date-from-object-id} = require \./public/scripts/utils.ls
-    {
-
-        # dependent on mongo operations
-        moment
-        bucketize: bucketize
-        day-to-timestamp: (field) -> $multiply: [field, 86400000]
-        object-id: ObjectID
-        timestamp-to-day: bucketize 86400000
-        object-id-from-date: ObjectID . object-id-from-date 
-
-        # independent of any mongo operations
-        parse-date
-        to-timestamp
-        get-today: today
-        today: today!
-        date-from-object-id
-
-    }
-
+#TODO: moved to utils
 get-query-by-id = (query-database, query-id, callback) !-->
     (err, results) <- query-database.collection \queries .aggregate do 
         [
@@ -303,11 +235,6 @@ parse-parameters = (query-value, user-defined-value)->
     | \Number => (if user-defined-value % 1 == 0 then parse-int else parse-float) query-value
     | otherwise => query-value
 
-console.log "Connectin to", config.mongo, config.mongo-options
-# connect to mongo-db
-(err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
-return console.log err if !!err
-console.log "successfully connected to #{config.mongo}"
 
 get-ip = (req)->
     (req?.query?['x-ip'] || req?.headers?['x-forwarded-for'] || req?.connection?.remoteAddress || req?.socket?.remoteAddress || req?.connection?.socket?.remoteAddress)?.split(":")?[0]
@@ -516,32 +443,15 @@ app.post \/execute, (req, res)->
 
     res.end JSON.stringify result, null, 4
 
-# extract keywords from the latest record (for auto-completion)
-app.get \/keywords/queryContext, (req, res) ->
+app.post \/keywords/:type, (req, res) ->
     res.set \content-type, \application/json
-    res.end JSON.stringify config.test-ips ++ ((get-all-keys-recursively get-query-context!, -> true) |> map dasherize)
+    err, keywords <- do -> match req.params.type
+    | \mongodb => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
+    | _ => (callback) -> callback "Invalid connection type: #{req.params.type}"
 
-#
-app.get \/keywords/:serverName/:database/:collection, (req, res)->
+    return die res, err if !!err
+    res.end JSON.stringify keywords
 
-    err, results <- execute-mongo-query \aggregation, req.params.server-name, req.params.database, req.params.collection,
-        [
-            {
-                $sort: _id: -1
-            }
-            {
-                $limit: 10
-            }
-        ]
-    return die err, res if !!err
-
-    collection-keywords = 
-        results 
-            |> concat-map (-> get-all-keys-recursively it, (k, v)-> typeof v != \function)
-            |> unique
-
-    res.set \content-type, \application/json
-    res.end JSON.stringify collection-keywords ++ (collection-keywords |> map -> "$#{it}")
 
 # return a list of all queries
 app.get \/list, (req, res)->
@@ -703,9 +613,9 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
         res.end JSON.stringify result, null, 4    
 
     return run (execute-query query-database, updated-document) if req.params.layer == \-
-    return run (execute-and-transform-query query-database, updated-document) if req.params.layer == \transformation
+    return run (execute-and-transform-query updated-document) if req.params.layer == \transformation
 
-    err, transformed-result <- execute-and-transform-query query-database, updated-document
+    err, transformed-result <- execute-and-transform-query updated-document
     return die res, err if !!err    
     res.render do
         \public/presentation.html
