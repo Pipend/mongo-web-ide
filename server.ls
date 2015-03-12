@@ -60,11 +60,12 @@ execute-mongo-query = (type, server-name, database, collection, query, callback)
     callback
 
 
-execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters}:document, callback) !-->
-
-    querier = require \./query-context/mongo-db-query.ls
-    if multi-query
-        querier = require \./query-context/multi-query.ls
+execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type}:document, callback) !-->
+    console.log \--------type, type
+    querier = switch 
+    | multi-query => require \./query-context/multi-query.ls
+    | \mssql == type => require \./query-context/mssql-query.ls
+    | _ => require \./query-context/mongo-db-query.ls
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
@@ -447,6 +448,7 @@ app.post \/keywords/:type, (req, res) ->
     res.set \content-type, \application/json
     err, keywords <- do -> match req.params.type
     | \mongodb => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
+    | \mssql => (require \./query-context/mssql-query.ls).keywords req.body.connection
     | _ => (callback) -> callback "Invalid connection type: #{req.params.type}"
 
     return die res, err if !!err
