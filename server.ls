@@ -10,7 +10,7 @@ moment = require \moment # TODO: move to query-context
 {MongoClient, ObjectID, Server} = require \mongodb # TODO: move to query-context
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, all} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 
@@ -190,9 +190,9 @@ app = express!
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
+console.log \authentication, config.authentication.strategy
 # github passport strategy
 if config.authentication.strategy == \github
-    console.log \config.authentication.strategies, config.authentication.strategies
     options = config.authentication.strategies[config.authentication.strategy].options
     passport.use new github-strategy do 
         {
@@ -225,7 +225,7 @@ if config.authentication.strategy == \github
     # user is redirected to this route by github
     app.get \/auth/github/callback, (req, res, next) ->
         redirect-url = "/"
-        if !!req.session.last-url
+        if !!req.session.last-url and <[login auth]> |> all (-> (req.session.last-url.index-of it) < 0)
             redirect-url = req.session.last-url
         (passport.authenticate \github, (err, user, info) ->
             return next err if !!err
