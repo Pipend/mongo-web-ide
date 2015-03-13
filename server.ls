@@ -152,7 +152,6 @@ app = express!
     ..use (require \cookie-parser)!
     ..use (req, res, next)->
         return next! if req.method is not \POST
-        console.log \*****POST*****
         body = ""
         size = 0
         req.on \data, -> 
@@ -170,12 +169,14 @@ app = express!
     ..use passport.session!
     ..use (req, res, next)->
 
+        req.session.last-url = req.url if !req.session.last-url
+
         ip = get-ip req
         Netmask = require \netmask .Netmask
         whites = config.authentication.white-list ? [] |> map -> new Netmask it
 
         # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy.name == \none then 1 else null)
+        user-id = req?.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy == \none then 1 else null)
         req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         # get the user object from the session & store it in the request
@@ -190,11 +191,13 @@ app = express!
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
 # github passport strategy
-if config.authentication.strategy.name == \github
+if config.authentication.strategy == \github
+    console.log \config.authentication.strategies, config.authentication.strategies
+    options = config.authentication.strategies[config.authentication.strategy].options
     passport.use new github-strategy do 
         {
-            clientID: config.authentication.strategy.options.client-id
-            client-secret: config.authentication.strategy.options.client-secret
+            clientID: options.client-id
+            client-secret: options.client-secret
         }
         (accessToken, refreshToken, profile, done) ->
 
@@ -211,7 +214,7 @@ if config.authentication.strategy.name == \github
                 url: organizations-url
             return die error if !!err
 
-            organization-member = (JSON.parse body) |> find (.login == config.authentication.strategy.options.organization-name)
+            organization-member = (JSON.parse body) |> find (.login == options.organization-name)
             return die "not part of #{config.organization-name}" if !organization-member
 
             done null, profile    
@@ -220,7 +223,21 @@ if config.authentication.strategy.name == \github
     app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
 
     # user is redirected to this route by github
-    app.get \/auth/github/callback,  passport.authenticate(\github, { failure-redirect: '/login' }), (req, res)-> res.redirect \/
+    app.get \/auth/github/callback, (req, res, next) ->
+        redirect-url = "/"
+        if !!req.session.last-url
+            redirect-url = req.session.last-url
+        (passport.authenticate \github, (err, user, info) ->
+            return next err if !!err
+            return res.redirect '/login' if !user
+            if !!req.session.last-url
+                req.session.last-url = null
+                err <- req.login user
+                return next err if !!err
+
+            res.redirect redirect-url ? "/"
+
+        )(req, res, next)
 
 # convert github data to user-id
 passport.serialize-user (user, done)-> done null, user
