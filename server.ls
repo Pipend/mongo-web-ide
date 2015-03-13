@@ -61,10 +61,10 @@ execute-mongo-query = (type, server-name, database, collection, query, callback)
 
 
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type}:document, callback) !-->
-    console.log \--------type, type
     querier = switch 
     | multi-query => require \./query-context/multi-query.ls
     | \mssql == type => require \./query-context/mssql-query.ls
+    | \curl == type => require \./query-context/curl-query.ls
     | _ => require \./query-context/mongo-db-query.ls
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
@@ -83,104 +83,6 @@ execute-query = (query-database, {server-name, database, collection, multi-query
         Math.floor 1000 * Math.random!
     return callback error if !!error
     return callback null, query-cache[key] = result
-
-    # context properties that are same for different query types
-    query-context = get-query-context! <<< (require \prelude-ls) <<< parameters
-
-    if (query.index-of \curl) == 0
-
-        {shell-command, parse} = require \./query-context/shell-command-parser
-
-        result = parse shell-command, query
-
-        return callback "Parsing Error #{result.0.1}" if !!result.0.1
-
-        curl = require \curlrequest
-
-        result := result.0.0.args |> concat-map id
-        url = result |> find (-> !!it.opt) |> (.opt)
-        options = result |> filter (-> !!it.name) |> (map ({name, value}) -> [name, if !!value then value else name]) |> pairs-to-obj
-        options.url = url
-
-        console.log options
-
-        curl.request do
-            options
-            (err, parts) ->
-                return callback err, null if !!err
-                try
-                    result := JSON.parse parts
-                catch error
-                    return callback error.to-string!, null
-                  
-                return callback null, query-cache[key] = result
-
-
-
-
-    else if multi-query
-
-        code = """
-                (callback) ->
-                    fail = (err) !-> callback err, null
-                    done = (res) !-> callback null, res
-
-                #{query |> Str.lines |> map (-> "    " + it) |> Str.unlines}
-                """
-
-        run-latest-query = (branch-id, parameters, callback)->
-
-            err, document <- get-latest-query-in-branch query-database, branch-id
-            return callback err, null if !!err
-
-            execute-and-transform-query (document <<< {parameters}), callback
-
-        [err, transpiled-code] = compile-and-execute-livescript do
-            code
-            {} <<< query-context <<< {
-
-                run-query: (query-id, parameters, callback)-> 
-
-                    err, document <- get-query-by-id query-id
-                    return callback err, null if !!err
-
-                    execute-and-transform-query (document <<< {parameters}), callback
-
-                run-latest-query
-
-                # deprecated
-                run-queryb: run-latest-query
-
-            }
-
-        return callback err, null if !!err   
-
-        try 
-            err, result <- transpiled-code!
-            return callback err, null if !!err
-            callback null, query-cache[key] = result
-
-        catch err
-            callback err, null
-
-
-    else
-
-        [err, transpiled-code] = compile-and-execute-livescript (convert-query-to-valid-livescript query), query-context
-        return callback err, null if !!err
-        
-        if '$map' in (transpiled-code |> concat-map Obj.keys)
-            [err, transpiled-code] = compile-and-execute-livescript ("{\n#{query}\n}"), query-context
-            return callback err, null if !!err
-            type = \map-reduce
-        else
-            type = \aggregation
-        
-
-        err, result <- execute-mongo-query type, server-name, database, collection, transpiled-code
-        return callback err, null if !!err
-
-        callback null, query-cache[key] = result
     
 execute-and-transform-query = (require \./utils.ls).execute-and-transform-query query-database, execute-query
 
@@ -449,6 +351,7 @@ app.post \/keywords/:type, (req, res) ->
     err, keywords <- do -> match req.params.type
     | \mongodb => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
     | \mssql => (require \./query-context/mssql-query.ls).keywords req.body.connection
+    | \curl => (require \./query-context/curl-query.ls).keywords req.body.connection
     | _ => (callback) -> callback "Invalid connection type: #{req.params.type}"
 
     return die res, err if !!err

@@ -172,7 +172,7 @@ token = (p) ->
 word = do ->
   l <- bind letter
   ds <- bind <| many (
-    n <- bind <| not-chars [' ', '\n', '\r', '>', '<', '|', '`']
+    n <- bind <| not-chars [' ', '\n', '\r', '>', '<', '|']
     unit n
   )
   unit l + ds
@@ -181,15 +181,15 @@ word = do ->
 non-quoted-string = do ->
     many <| (do ->
         _ <- bind <| string '\\"'
-        not-char \"
-    ) `por` (not-char \")
+        not-chars [\", '`'] # disable sub commands
+    ) `por` (not-chars [\", '`'])
     
 quoted-string = do ->
     _ <- bind <| char \"
     str <- bind non-quoted-string
     _ <- bind <| char \"
-    #unit "\"#str\""
-    unit str
+    unit "\"#str\""
+    #unit str
     
 any-string = quoted-string `por` non-quoted-string
 
@@ -260,7 +260,7 @@ shell-command = do ->
     cmd <- bind token word
     args <- bind (many <| do ->
         (do ->
-            s <- bind <| token <| quoted-string `por` (many1 <| (not-chars [' ', '-']))
+            s <- bind <| token <| quoted-string `por` (many1 <| (not-chars [' ', '-', '`']))
             unit [opt: s]
         ) `por` (token (many-one-letter-shell-opt-with-value `por` many-one-letter-shell-opt `por` shell-opt-with-value `por` one-letter-shell-opt `por` shell-opt))
     )
@@ -277,7 +277,7 @@ curl
 --max-filesize 100000 
 -s 
 --user "078735bc:a6028e865466e9299cc639e944e5dbc78c0fb8cc" 
-"https://hub.celtra.com/api/analytics?metrics=sessions,creativeLoads,creativeViews00,sessionsWithInteraction,interactions&dimensions=campaignName,creativeId,creativeName,supplierName&filters.accountDate.gte=2015-02-10&filters.accountDate.lte=2015-02-19&filters.accountId=e97de0f9&sort=-sessions&limit=200"
+"https://hub.celtra.com/api/analytics?metrics=sessions,creativeLoads,creativeViews00,sessionsWithInteraction,interactions&dimensions=campaignName,creativeId,creativeName,supplierName&filters.accountDate.gte=2015-01-01&filters.accountDate.lte=2015-03-10&filters.campaignId=5ed2abb4&filters.accountId=e97de0f9&sort=-sessions&limit=200"
 """
 
-console.dir <| obj.0.0
+#console.dir <| obj.0.0
