@@ -1,7 +1,7 @@
 {concat-map, map, unique, sort, find} = require \prelude-ls
 
 module.exports = ({Plottable, plot-chart, d3, nv}) -> new Plottable do
-    (view, result, {x, y, y-axis, x-axis, show-legend, show-controls, use-interactive-guideline, clip-edge, fill-intervals, key, values}, continuation) !-->
+    (view, result, {x, y, y-axis, x-axis, show-legend, show-controls, use-interactive-guideline, clip-edge, fill-intervals, key, values, color}, continuation) !-->
 
         <- nv.add-graph 
 
@@ -17,6 +17,10 @@ module.exports = ({Plottable, plot-chart, d3, nv}) -> new Plottable do
             .show-controls show-controls
             .clip-edge clip-edge
             .show-legend show-legend
+
+
+        if !!color
+            chart.color color . (.key)
 
         chart
             ..x-axis.tick-format x-axis.tick-format

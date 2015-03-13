@@ -27,6 +27,11 @@ module.exports = ({Plottable, d3}) -> new Plottable do
             
             [slope, intercept, r-square]
 
+        y-range := {
+            min: (map y) >> minimum
+            max: (map y) >> maximum
+        } <<< y-range
+
         width = view.client-width - margin.left - margin.right
         height = view.client-height - margin.top - margin.bottom
 
@@ -36,7 +41,6 @@ module.exports = ({Plottable, d3}) -> new Plottable do
             ..domain [(y-range.min result), (y-range.max result)]
         size-scale = d3.scale.linear!.range [3, 10]
             ..domain [(result |> map size |> minimum), (result |> map size |> maximum)]
-
 
         svg = d3.select view .append \div .attr \style, "position: absolute; left: 0px; top: 0px; width: 100%; height: 100%" .append \svg
             .attr \class, \regression
@@ -136,9 +140,7 @@ module.exports = ({Plottable, d3}) -> new Plottable do
         x-axis:
             format: (d3.format '0.2f')
             label: 'X'
-        y-range: 
-            min: (map (.y)) >> minimum
-            max: (map (.y)) >> maximum
+        y-range: null 
         tooltip: null
         margin: {top: 20, right:20, bottom: 50, left: 50}
     }
