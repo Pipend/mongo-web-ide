@@ -10,6 +10,8 @@
 
 * create ``` ./config.ls ``` with the following contents :
 ```
+{rextend} = require \./public/scripts/presentation-plottables/_utils.ls  
+
 config =
   env: \local
 
@@ -17,12 +19,13 @@ config =
     allow-disk-use: true
     authentication:
       white-list: <[127.0.0.0/31 192.168.0.0/16]>
-      strategy:
-        name: \github
-        options:
-          client-id: ""
-          client-secret: ""
-          organization-name: ""
+      strategy: \github
+      strategies:
+        github:
+          options:
+            client-id: ""
+            client-secret: ""
+            organization-name: ""
     browserify-debug-mode: false
     connection-strings: [
       {
@@ -52,13 +55,11 @@ config =
   preview: {}
 
   local:
-    authentication: 
-      strategy: 
-        name: \none
+    authentication: strategy: \none
     browserify-debug-mode: true    
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
 
-module.exports = config.all <<< config[config.env] <<< env: config.env
+module.exports = {} <<< (config.all `rextend` config[config.env] `rextend` env: config.env)
 ```
 
 * run the server
