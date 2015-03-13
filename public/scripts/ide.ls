@@ -64,13 +64,29 @@ create-livescript-editor = (element-id)->
             window.open "/branch/#{current-token.value.substr 1}" if previous-token.value == \run-latest-query
                     
 
+
+latest-query-token = null
+
+cancel-query = ->
+    display = (msg)->
+        pre = $ "<pre/>"
+        pre.html msg.to-string!
+        $ \.output .empty! .append pre
+    $.post \/cancel, JSON.stringify {query-token: latest-query-token}
+        ..done (response) ->
+            display response
+        ..fail ({response}) -> 
+            display "ERROR IN CANCELLATION: #{response}" 
+
 # makes a POST request to the server and returns the result of the mongo query
 # Note: the request is made only if there is a change in the query
 execute-query = do ->
 
     previous = {}
 
-    (query, parameters, server-name, database, collection, multi-query, type, cache, callback)->
+    (query, parameters, server-name, database, collection, multi-query, type, cache, callback) ->
+
+        latest-query-token := new Date!.value-of!
     
         # compose request object
         request = {            
@@ -81,6 +97,7 @@ execute-query = do ->
             parameters
             multi-query
             type
+            query-token: latest-query-token
         }
 
         # return cached response (if any)
@@ -93,6 +110,7 @@ execute-query = do ->
                 callback null, response
 
             ..fail ({response-text}) -> callback response-text, null
+
 
 # uses the execute-query function and presents the results after appling the transformation
 execute-query-and-display-results = do ->
@@ -595,6 +613,7 @@ $ ->
     # execute the query on button click or hot key (command + enter)
     key 'command + enter', -> execute-query-and-display-results get-document-state history.state
     $ \#execute-query .on \click, -> execute-query-and-display-results get-document-state history.state
+    $ \#cancel .on \click, -> cancel-query!
 
     # fork
     $ \#fork .on \click, ->

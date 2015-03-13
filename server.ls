@@ -16,7 +16,8 @@ request = require \request
 
 # global variables
 query-cache = {}
-
+# poll of query-token: kill function
+current-queries = {}
 
 # utility functions
 {compile-and-execute-livescript} = require \./utils
@@ -49,23 +50,22 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-execute-mongo-query = (type, server-name, database, collection, query, callback) !-->
-    (require \./query-context/mongo-db-query.ls).execute-mongo-query
-    new Date!.value-of!
-    type
-    server-name
-    database
-    collection
-    query
-    callback
+execute-mongo-query = (require \./query-context/mongo-db-query.ls).execute-mongo-query new Date!.value-of!
+
+cancel-query = (query-token, callback) ->
+    cancel = current-queries[query-token]
+    return callback new Error "Query is not running #{query-token}" if !cancel
+    cancel callback
 
 
-execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type}:document, callback) !-->
+execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type, query-token}:document, callback) !-->
     querier = switch 
     | multi-query => require \./query-context/multi-query.ls
     | \mssql == type => require \./query-context/mssql-query.ls
     | \curl == type => require \./query-context/curl-query.ls
     | _ => require \./query-context/mongo-db-query.ls
+
+    current-queries[query-token] = querier.cancel query-token
 
     # parameters is String if coming from the single query interface; it is an empty object if coming from multi query interface
     if \String == typeof! parameters
@@ -80,7 +80,7 @@ execute-query = (query-database, {server-name, database, collection, multi-query
         {server-name: server-name, database: database, collection: collection, query-database, execute-query}
         query
         parameters
-        Math.floor 1000 * Math.random!
+        query-token
     return callback error if !!error
     return callback null, query-cache[key] = result
     
@@ -356,9 +356,16 @@ app.get "/delete/branch/:branchId", (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
 
-    {server-name, database, collection, multi-query, query, cache, parameters = "{}"}:document = req.body    
+    {server-name, database, collection, multi-query, query, cache, query-token, parameters = "{}"}:document = req.body    
 
     err, result <-  execute-query query-database, document
+    return die res, err if !!err
+
+    res.end JSON.stringify result, null, 4
+
+app.post \/cancel, (req, res) ->
+    {query-token} = req.body
+    err, result <- cancel-query query-token
     return die res, err if !!err
 
     res.end JSON.stringify result, null, 4

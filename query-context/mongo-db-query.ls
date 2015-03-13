@@ -1,7 +1,7 @@
 config = require \./../config
 {compile} = require \LiveScript
 {MongoClient, ObjectID, Server} = require \mongodb
-{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, sort-by} = require \prelude-ls
 {compile-and-execute-livescript, get-all-keys-recursively} = require \./../utils
 
 # internal utility
@@ -11,31 +11,35 @@ poll = {}
 
 # delegate
 kill = (db, client, query, start-time, callback) ->
-    return if 'connected' != db.serverConfig?._serverState
+    return callback new Error "_serverState is not connected", null if 'connected' != db.serverConfig?._serverState
     db.collection '$cmd.sys.inprog' .findOne (err, data) ->
         try
-            return callback err, null
+            return callback err, null if !!err
 
-            queries = data.inprog #|> map (-> [it.opid, it.microsecs_running, it.query])
+            queries = data.inprog 
 
             # first try by matching query objects
             oquery = objectify query
             the-query = queries |> find (-> !!it.query?.pipeline and objectify it.query.pipeline === oquery)
         
-            # second try by matching time
+
             if !the-query
+                # second try by matching time
                 now = new Date!.value-of!
-                #TODO...
+                delta = now - start-time
+                the-query := queries |> sort-by (-> delta - it.microsecs_running/1000) |> (.0)
             
 
             if !!the-query
-                console.log "^^^ Canceling op #{the-query.opid}"
+                console.log "Canceling op #{the-query.opid}"
 
                 err, data <- db.collection '$cmd.sys.killop' .findOne { 'op': the-query.opid }
                 return callback err, null if !!err
                 db.close!
                 client.close!
                 callback null, \killed
+            else
+                callback new Error "Query could not be found #{query}\nStarted at: #{start-time}", null
         catch error
             callback error, null
 
@@ -73,9 +77,11 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
     }
 
     set-timeout do 
-        kill (kill-error, kill-result) -> 
-            return console.log \kill-error, kill-error if !!kill-error
-            console.log \kill-result, kill-result
+        -> 
+            console.log \timeout, query-id
+            poll[query-id]?.kill (kill-error, kill-result) -> 
+                return console.log \kill-error, kill-error if !!kill-error
+                console.log \kill-result, kill-result
         timeout
 
     #(require \./ops).cancel-long-running-query 1200000, db, mongo-client, query
@@ -152,7 +158,7 @@ export query = ({server-name, database, collection}:connection, query, parameter
     execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 60000, callback
 
     
-export cancel = (query-id, callback) ->
+export cancel = (query-id, callback) !-->
     query = poll[query-id]
     return callback (new Error "Query not found #{query-id}") if !query
     query.kill callback
