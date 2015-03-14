@@ -58,10 +58,10 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
 
     # perform query & close db connection
     f = switch type
-            | \aggregation => execute-mongo-aggregation-pipeline
-            | \map-reduce => execute-mongo-map-reduce
-            | _ => (..., callback) -> 
-                callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
+        | \aggregation => execute-mongo-aggregation-pipeline
+        | \map-reduce => execute-mongo-map-reduce
+        | _ => (..., callback) -> 
+            callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
 
     db = mongo-client.db database
 
@@ -72,8 +72,9 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
 
     poll[query-id] = {
         kill: (kill-callback) ->
-                kill db, mongo-client, query, start-time, kill-callback
-                delete poll[query-id]
+            err, result <- kill db, mongo-client, query, start-time
+            delete poll[query-id]
+            kill-callback err, result
     }
 
     set-timeout do 
@@ -84,10 +85,11 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
                 console.log \kill-result, kill-result
         timeout
 
-    #(require \./ops).cancel-long-running-query 1200000, db, mongo-client, query
 
     err, result <- f (db.collection collection), query
     mongo-client.close!
+    return callback Error "query was killed #{query-id}" if !poll[query-id]
+    delete poll[query-id]
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
 
     callback null, result

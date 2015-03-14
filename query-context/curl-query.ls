@@ -2,13 +2,12 @@
 {compile-and-execute-livescript, get-all-keys-recursively} = require \./../utils
 {exec} = require \shelljs
 
+poll = {}
+
 export get-query-context = ->
     {} <<< (require \./default-query-context.ls)! <<< (require \prelude-ls)
 
 export query = (connection, query, parameters, query-id, callback) !->
-    console.log \---------
-    console.log query
-    console.log \---------
 
     {shell-command, parse} = require \./../query-context/shell-command-parser
 
@@ -27,57 +26,34 @@ export query = (connection, query, parameters, query-id, callback) !->
 
     cmd = "curl #url #{options}"
 
-    code, output <- exec cmd, silent: true
+    process = exec cmd, silent: true, (code, output) ->
 
-    return callback Error "Error in curl #code #output", null if code != 0
+        return callback Error "query was killed #{query-id}" if !poll[query-id]
+        delete poll[query-id]
 
-    try
-      json = JSON.parse output
-    catch error
-        return callback error, null
-      
-    callback null, json
+        return callback Error "Error in curl #code #output", null if code != 0
 
-export cancel = (query-id, callback) !->
-    callback Error "Not Implemented", null
+        try
+          json = JSON.parse output
+        catch error 
+            return callback error, null
+          
+        callback null, json
+
+    poll[query-id] = {
+        kill: (kill-callback) ->
+            killed = process.kill!
+            delete poll[query-id]
+            kill-callback null, if killed then \killed else "Already killed"
+            
+    }
+
+export cancel = (query-id, callback) !-->
+    query = poll[query-id]
+    return callback (new Error "Query not found #{query-id}") if !query
+    query.kill callback
 
 export keywords = (connection, callback) -->
     console.log callback
     callback null, ["curl", "-H", "-d", "-X", "POST", "GET", "--user", "http://", "https://"]
 
-# err, res <- query do
-#     null
-#     """
-#         curl 
-#         "http://207.97.212.169:3033"
-#         -s --connect-timeout 60 
-#         -H "pretty: 1" 
-#         --max-time 60 
-#          -H "Content-Type: text/sql"
-#         -X POST 
-#         -d "
-#             SELECT TOP 1 * 
-#             FROM WAP_Visits ORDER BY 1 DESC
-#         "
-#     """
-#     {}
-#     1
-
-# console.log err, res
-
-# return
-
-# <- query do
-#     null
-#     """
-#         curl
-#         --limit-rate 200k 
-#         --connect-timeout 2 
-#         --max-time 10 
-#         --max-filesize 100000 
-#         -s 
-#         --user "078735bc:a6028e865466e9299cc639e944e5dbc78c0fb8cc" 
-#         "https://hub.celtra.com/api/analytics?metrics=sessions,creativeLoads,creativeViews00,sessionsWithInteraction,interactions&dimensions=campaignName,creativeId,creativeName,supplierName&filters.accountDate.gte=2015-02-10&filters.accountDate.lte=2015-02-19&filters.accountId=e97de0f9&sort=-sessions&limit=200"
-#     """
-#     {}
-#     1
