@@ -16,7 +16,7 @@ query-sql = (connection-config, query, callback) ->
 export query = ({query-database, execute-query}:connection, query, parameters, query-id, callback) ->
 	query-sql config.mssql.connection-strings.0, query, callback
 
-export cancel = (query-id, callback) ->
+export cancel = (query-id, callback) !-->
 	callback "Not Implemented", null
 
 export keywords = ({query-database}:connection, callback) !-->

@@ -56,7 +56,7 @@ export query = ({query-database, execute-query}:connection, query, parameters, q
     catch err
         callback err, null
 
-export cancel = (query-id, callback) !->
+export cancel = (query-id, callback) !-->
     callback "Not implemented", null
 
 export keywords = ({query-database}:connection, callback) -->
