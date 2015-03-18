@@ -61,6 +61,7 @@ cancel-query = (query-token, callback) ->
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type, query-token}:document, callback) !-->
     querier = switch 
     | multi-query => require \./query-context/multi-query.ls
+    | \multi == type => require \./query-context/multi-query.ls
     | \mssql == type => require \./query-context/mssql-query.ls
     | \curl == type => require \./query-context/curl-query.ls
     | _ => require \./query-context/mongo-db-query.ls

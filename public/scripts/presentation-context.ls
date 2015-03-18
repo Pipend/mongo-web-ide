@@ -194,8 +194,8 @@ module.exports.get-presentation-context = ->
         }) !->
             <- nv.add-graph
 
-            if options.fill-intervals
-                result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
+            #if options.fill-intervals
+            #    result := result |> map ({key, values})-> {key, values: values |> fill-intervals}
 
             chart = nv.models.line-plus-bar-chart!
                 .x (, i) -> i
