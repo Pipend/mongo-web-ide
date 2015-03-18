@@ -14,6 +14,8 @@ query-sql = (connection-config, query, callback) ->
 		callback null, records
 
 export query = ({query-database, execute-query}:connection, query, parameters, query-id, callback) ->
+	(Obj.keys parameters) |> each (key) ->
+		query := query.replace "$#{key}$", parameters[key]
 	query-sql config.mssql.connection-strings.0, query, callback
 
 export cancel = (query-id, callback) !-->
