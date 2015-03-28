@@ -387,6 +387,7 @@ app.post \/keywords/:type, (req, res) ->
     | \mongodb => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
     | \mssql => (require \./query-context/mssql-query.ls).keywords req.body.connection
     | \curl => (require \./query-context/curl-query.ls).keywords req.body.connection
+    | \multi => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
     | _ => (callback) -> callback "Invalid connection type: #{req.params.type}"
 
     return die res, err if !!err
