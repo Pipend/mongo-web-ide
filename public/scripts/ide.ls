@@ -283,7 +283,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
                                 | \reset =>
                                     return if !confirm "Are you sure you want to reset your changes?"
                                     client-storage.delete-document-state query-id
-                                    update-dom-with-document-state history.state
+                                    <- update-dom-with-document-state history.state, true
 
                             
                     conflict-dialog-container
@@ -377,7 +377,7 @@ parse-bool = -> it == \true
 reset-document-sate = (query-id, remote-document-states)->
     client-storage.delete-document-state query-id
     document-state = remote-document-states |> find (.query-id == query-id)
-    update-dom-with-document-state document-state
+    <- update-dom-with-document-state document-state, true
     update-remote-state-button document-state, remote-document-states
 
 # update the ace-editors after there corresponding div elements have been resized
@@ -428,7 +428,7 @@ try-parse-json = (json-string)->
     json
 
 # update the editors, document.title etc using the document-state (persisted to local-storage and server)
-update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, type, ui}, update-ui = true)->
+update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, type, ui}:document-state, update-ui, callback) ->
     document.title = query-name
     $ \#query-name .val query-name
     $ \#server-name .val server-name
@@ -451,6 +451,58 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
                 $ \.editors .css \width, ui.left-editors-width
         resize-ui!
         resize-editors!
+
+
+    populate-drop-downs = (callback) ->
+        <[server-name database collection]> |> map -> ($ '#' + it).off \change
+
+        $ '#collection' .on \change, ->
+            document-state.collection = $ '#collection' .val!
+            callback!
+
+        # collections
+        {connections} <- $.post "/connections/mongodb", "{}"
+        $ '#server-name option' .remove!
+        connections.sort!.for-each (c) ->
+            $ '#server-name' .append <| $ "<option>#{c}</option>"
+
+
+        # databases
+        $ '#database' .on \change, ->
+            document-state.database = $ '#database' .val!
+            {collections} <- $.post "/connections/mongodb", JSON.stringify {connection: ($ \#server-name .val!), database: ($ \#database .val!)}
+            $ '#collection option' .remove!
+            collections.sort!.for-each (c) ->
+                $ '#collection' .append <| $ "<option>#{c}</option>"
+
+            $ '#collection' 
+                .val document-state.collection
+                .change!
+            
+        # connections
+        $ '#server-name'
+            .on \change,  ->
+                document-state.server-name = $ '#server-name' .val!
+                {databases} <- $.post "/connections/mongodb", JSON.stringify {connection: ($ \#server-name .val!)}
+                $ '#database option' .remove!
+                databases.sort!.for-each (c) ->
+                    $ '#database' .append <| $ "<option>#{c}</option>"
+                $ '#database' 
+                    .val document-state.database
+                    .change!
+            .val document-state.server-name
+            .change!
+
+
+    <- populate-drop-downs
+
+    # remove callback from collection on change, callback should only be called once
+    $ '#collection' 
+        .off \change
+        .on \change, ->
+            document-state.collection = $ '#collection' .val!
+
+    callback null, null
 
 # the state button is only visible when there is copy of the query on the server
 # the highlight on the state button indicates the client version differs the server version
@@ -500,6 +552,7 @@ $ ->
     presentation-editor := create-livescript-editor \presentation-editor
     parameters-editor := create-livescript-editor \parameters-editor
 
+
     # load document & update DOM, editors
     {query-id}? = get-identifiers window.location.href, window.remote-document-states
 
@@ -512,7 +565,10 @@ $ ->
         document-state = {} <<< window.remote-document-states.0 <<< {branch-id: \local, query-id: base62.encode Date.now!}            
 
     history.replace-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
-    update-dom-with-document-state document-state
+
+
+    <- update-dom-with-document-state document-state, true
+
 
     # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
     do ->
@@ -632,14 +688,14 @@ $ ->
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only true            
             document-state = get-document-state history.state
             client-storage.save-document-state document-state.query-id, document-state
-            update-dom-with-document-state do 
+            <- update-dom-with-document-state do 
                 window.remote-document-states |> find (.query-id == history.state.query-id)
                 false
             
         else
             $ @ .attr \data-state, \client
             [query-editor, transformation-editor, presentation-editor, parameters-editor] |> map -> it.set-read-only false            
-            update-dom-with-document-state do
+            <- update-dom-with-document-state do
                 client-storage.get-document-state history.state.query-id
                 false
 
@@ -665,7 +721,7 @@ $ ->
     window.onpopstate = (event)->
         local-state = client-storage.get-document-state event.state.query-id
         document-state = if !!local-state then local-state else event.state
-        update-dom-with-document-state document-state
+        <- update-dom-with-document-state document-state, true
         update-remote-state-button document-state, window.remote-document-states
 
     # query search

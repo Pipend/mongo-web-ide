@@ -43,9 +43,9 @@ kill = (db, client, query, start-time, callback) ->
         catch error
             callback error, null
 
-# utility function for executing a single mongpdb query
-export execute-mongo-query = (query-id, type, server-name, database, collection, query, timeout, callback) !-->
-
+# utility function for executing a single raw mongodb query
+# f :: (db, callback) --> void;
+execute-mongo-database-query-func = (query-id, f, server-name, database, timeout, callback) !-->
     # retrieve the connection string from config
     connection-string = config.connection-strings |> find (.name == server-name)
     return callback (new Error "server name not found"), null if typeof connection-string == \undefined
@@ -56,19 +56,9 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
     err, mongo-client <- mongo-client.open 
     return callback err, null if !!err
 
-    # perform query & close db connection
-    f = switch type
-        | \aggregation => execute-mongo-aggregation-pipeline
-        | \map-reduce => execute-mongo-map-reduce
-        | _ => (..., callback) -> 
-            callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
-
     db = mongo-client.db database
 
-
     start-time = new Date!.value-of!
-
-
 
     poll[query-id] = {
         kill: (kill-callback) ->
@@ -85,14 +75,31 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
                 console.log \kill-result, kill-result
         timeout
 
+    err, result <- f db
 
-    err, result <- f (db.collection collection), query
     mongo-client.close!
-    return callback Error "query was killed #{query-id}" if !poll[query-id]
+    return callback (new Error "query was killed #{query-id}") if !poll[query-id]
     delete poll[query-id]
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
-
     callback null, result
+
+# utility function for executing a single mongodb query from ide
+export execute-mongo-query = (query-id, type, server-name, database, collection, query, timeout, callback) !-->
+
+
+    # perform query & close db connection
+    f = switch type
+        | \aggregation => execute-mongo-aggregation-pipeline
+        | \map-reduce => execute-mongo-map-reduce
+        | _ => (..., callback) -> 
+            callback (new Error "Unexpected query type '#type' \nExpected either 'aggregation' or 'map-reduce'."), null
+
+    g = (db, callback) !--> 
+        f (db.collection collection), query, callback
+
+    execute-mongo-database-query-func query-id, g, server-name, database, timeout, callback
+
+    
 
 # private utility
 convert-query-to-valid-livescript = (query)->
@@ -193,3 +200,37 @@ export keywords = ({server-name, database, collection}:connection, callback) !--
             $eq $first $geo-near $group $gt $gte $hour $if-null $last $let $limit $literal $lt $lte $map $match $max $meta $millisecond $min $minute $mod $month 
             $multiply $ne $not $or $out $project $push $redact $second $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort 
             $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
+
+
+export connections = ({connection, database}, callback) !--> 
+
+    if !connection
+        # return the list of all connecitons
+        return callback null, connections: (config.connection-strings |> map (.name))
+
+    err, result <- switch
+        |  !database => (callback) !->
+            # return the list of all databases for the given connection
+            f = (db, callback) !-->
+                err, res <- db.admin!.listDatabases
+                return callback err, null if !!err
+                callback null, (res.databases |> map (.name))
+
+            err, databases <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, 'admin', 5000
+            return callback err, null if !!err
+
+            return callback null, connection: connection, databases: databases
+
+        | _ => (callback) !->
+            # return the list of all collection for the given connection and database
+            f = (db, callback) !-->
+                err, res <- db.collectionNames
+                return callback err, null if !!err
+                callback null, (res |> map (.name.split \. .1))
+
+            err, collections <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, database, 5000
+            return callback err, null if !!err
+
+            callback null, connection: connection, database: database, collections: collections
+
+    callback err, result

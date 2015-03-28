@@ -382,6 +382,14 @@ app.post \/keywords/:type, (req, res) ->
     return die res, err if !!err
     res.end JSON.stringify keywords
 
+app.post \/connections/:type, (req, res) ->
+    res.set \content-type, \application/json
+    err, connections <- do -> match req.params.type
+    | \mongodb => (require \./query-context/mongo-db-query.ls).connections req.body
+    | _ => (callback) -> callback "Not implemented for connection type: #{req.params.type}"
+
+    return die res, err if !!err
+    res.end JSON.stringify connections
 
 # return a list of all queries
 app.get \/list, (req, res)->
