@@ -226,11 +226,12 @@ export connections = ({connection, database}, callback) !-->
             f = (db, callback) !-->
                 err, res <- db.collectionNames
                 return callback err, null if !!err
-                callback null, (res |> map (.name.split \. .1))
+                callback null, (res |> map (.name))
 
             err, collections <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, database, 5000
             return callback err, null if !!err
 
             callback null, connection: connection, database: database, collections: collections
 
+    console.log \result, result
     callback err, result
