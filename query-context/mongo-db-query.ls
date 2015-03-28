@@ -20,8 +20,7 @@ kill = (db, client, query, start-time, callback) ->
 
             # first try by matching query objects
             oquery = objectify query
-            the-query = queries |> find (-> !!it.query?.pipeline and objectify it.query.pipeline === oquery)
-        
+            the-query = queries |> find (-> !!it.query?.pipeline and objectify it.query.pipeline === oquery)        
 
             if !the-query
                 # second try by matching time
@@ -81,6 +80,7 @@ execute-mongo-database-query-func = (query-id, f, server-name, database, timeout
     return callback (new Error "query was killed #{query-id}") if !poll[query-id]
     delete poll[query-id]
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
+
     callback null, result
 
 # utility function for executing a single mongodb query from ide
@@ -97,7 +97,13 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
     g = (db, callback) !--> 
         f (db.collection collection), query, callback
 
-    execute-mongo-database-query-func query-id, g, server-name, database, timeout, callback
+    err, res <- execute-mongo-database-query-func query-id, g, server-name, database, timeout
+    return callback err, null if !!err
+
+    if \map-reduce == type and !!res.collection-name
+        return callback null, {result: {collection-name: res.collection-name, tag: res.db.tag}}
+
+    callback null, res
 
     
 

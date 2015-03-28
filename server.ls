@@ -50,14 +50,14 @@ die = (res, err)->
     res.status 500
     res.end err.to-string!
 
-execute-mongo-query = (require \./query-context/mongo-db-query.ls).execute-mongo-query new Date!.value-of!
+execute-mongo-query = (require \./query-context/mongo-db-query.ls).execute-mongo-query (new Date!.value-of! + Math.floor Math.random!*100)
 
 cancel-query = (query-token, callback) ->
     cancel = current-queries[query-token]
     return callback new Error "Query is not running #{query-token}" if !cancel
     cancel callback
 
-
+# cache: true | false | seconds
 execute-query = (query-database, {server-name, database, collection, multi-query, query, cache, parameters, type, query-token}:document, callback) !-->
     querier = switch 
     | multi-query => require \./query-context/multi-query.ls
@@ -75,7 +75,11 @@ execute-query = (query-database, {server-name, database, collection, multi-query
 
     # return cached result if any
     key = md5 "#{query}, #{server-name}, #{database}, #{collection}, #{JSON.stringify parameters}, #{multi-query}"
-    return callback null, query-cache[key] if cache and !!query-cache[key]    
+
+    now = new Date!.value-of!
+    return callback null, query-cache[key].result if !!query-cache[key] and (cache != false and (cache == true or (now - query-cache[key]?.time)/1000 < cache))
+
+    query-token := now + Math.floor Math.random! * 1000 if !query-token
 
     error, result <- querier.query do 
         {server-name: server-name, database: database, collection: collection, query-database, execute-query}
@@ -83,7 +87,13 @@ execute-query = (query-database, {server-name, database, collection, multi-query
         parameters
         query-token
     return callback error if !!error
-    return callback null, query-cache[key] = result
+
+    query-cache[key] = {
+        result
+        time: new Date!.value-of!
+    }
+
+    return callback null, result
     
 execute-and-transform-query = (require \./utils.ls).execute-and-transform-query query-database, execute-query
 
@@ -527,7 +537,7 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     cache = match req.params.cache
     | \false => false
     | \true => true
-    | otherwise => false    
+    | otherwise => parse-int req.params.cache
 
     {query-id, branch-id} = req.params
 
