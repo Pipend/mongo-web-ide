@@ -164,7 +164,7 @@ export query = ({server-name, database, collection}:connection, query, parameter
         type = \aggregation
 
     #TODO: get timeout from config
-    execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 600000, callback
+    execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 1200000, callback
 
     
 export cancel = (query-id, callback) !-->
