@@ -216,4 +216,5 @@ module.exports.get-presentation-context = ->
         # [[key, val]] -> [[key, val]]
         fill-intervals
 
+        compile-livescript: (require \LiveScript).compile
     }    

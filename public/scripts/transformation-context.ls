@@ -41,6 +41,8 @@ module.exports.get-transformation-context = ->
 
         fill-range
 
+        compile-livescript: (require \LiveScript).compile
+
         object-id-from-date
         
         parse-date: parse-date
