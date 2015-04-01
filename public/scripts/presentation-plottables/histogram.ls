@@ -23,7 +23,7 @@ module.exports = ({Plottable, nv, plot-chart}) -> new Plottable do
 
         plot-chart view, result, chart
         
-        chart.update!
+        #chart.update!
 
     {
         key: (.key)

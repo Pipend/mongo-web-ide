@@ -51,4 +51,21 @@ module.exports.get-transformation-context = ->
 
         today: today!
 
+        # credit: https://gist.github.com/Gozala/1697037
+        tco: (fn) ->
+            active = null
+            next-args = null
+            ->
+                args = null
+                result = null
+                next-args := arguments
+                if not active
+                    active := true
+                    while next-args
+                        args := next-args
+                        next-args := null
+                        result := fn.apply this, args
+                    active := false
+                result
+
     }

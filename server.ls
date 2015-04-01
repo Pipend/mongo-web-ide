@@ -10,7 +10,7 @@ moment = require \moment # TODO: move to query-context
 {MongoClient, ObjectID, Server} = require \mongodb # TODO: move to query-context
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, all} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, all, floor} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 
@@ -22,7 +22,7 @@ current-queries = {}
 # utility functions
 {compile-and-execute-livescript} = require \./utils
 
-console.log "Connectin to", config.mongo, config.mongo-options
+console.log "Connecting to", config.mongo, config.mongo-options
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err

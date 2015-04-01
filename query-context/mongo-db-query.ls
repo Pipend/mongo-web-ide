@@ -1,7 +1,7 @@
 config = require \./../config
 {compile} = require \LiveScript
 {MongoClient, ObjectID, Server} = require \mongodb
-{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, sort-by} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, sort-by, floor} = require \prelude-ls
 {compile-and-execute-livescript, get-all-keys-recursively} = require \./../utils
 
 # internal utility
@@ -181,7 +181,7 @@ export cancel = (query-id, callback) !-->
 
 export keywords = ({server-name, database, collection}:connection, callback) !-->
 
-    err, results <- execute-mongo-query new Date!.value-of!, \aggregation, server-name, database, collection,
+    err, results <- execute-mongo-query (floor <| Math.random! * 1000000), \aggregation, server-name, database, collection,
         [
             {
                 $sort: _id: -1
@@ -219,10 +219,11 @@ export connections = ({connection, database}, callback) !-->
             # return the list of all databases for the given connection
             f = (db, callback) !-->
                 err, res <- db.admin!.listDatabases
+                console.log \db.admin!.listDatabases, err, res
                 return callback err, null if !!err
                 callback null, (res.databases |> map (.name))
 
-            err, databases <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, 'admin', 5000
+            err, databases <- execute-mongo-database-query-func (floor <| Math.random! * 1000000), f, connection, 'admin', 5000
             return callback err, null if !!err
 
             return callback null, connection: connection, databases: databases
@@ -234,7 +235,7 @@ export connections = ({connection, database}, callback) !-->
                 return callback err, null if !!err
                 callback null, (res |> map (.name))
 
-            err, collections <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, database, 5000
+            err, collections <- execute-mongo-database-query-func (floor <| Math.random! * 1000000), f, connection, database, 5000
             return callback err, null if !!err
 
             callback null, connection: connection, database: database, collections: collections
