@@ -24,7 +24,7 @@ export query = (connection, query, parameters, query-id, callback) !->
         |> Str.join " "
 
 
-    cmd = "curl #url #{options}"
+    cmd = "curl -s #url #{options}"
 
     process = exec cmd, silent: true, (code, output) ->
 
