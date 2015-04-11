@@ -23,6 +23,9 @@ export query = (connection, query, parameters, query-id, callback) !->
             (if name.length > 1 then "--" else "-") + name + if !!value then " #value" else ""
         |> Str.join " "
 
+    [err, url] = compile-and-execute-livescript url, parameters
+    return callback (Error "Url foramtting failed\n#err", err), null if !!err
+
 
     cmd = "curl -s #url #{options}"
 
