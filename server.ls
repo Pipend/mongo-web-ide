@@ -10,7 +10,7 @@ moment = require \moment # TODO: move to query-context
 {MongoClient, ObjectID, Server} = require \mongodb # TODO: move to query-context
 passport = require \passport
 github-strategy = (require \passport-github).Strategy
-{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, all} = require \prelude-ls
+{id, concat-map, dasherize, difference, each, filter, find, find-index, foldr1, Obj, keys, map, obj-to-pairs, pairs-to-obj, Str, unique, any, all, floor} = require \prelude-ls
 {get-transformation-context} = require \./public/scripts/transformation-context
 request = require \request
 
@@ -22,7 +22,7 @@ current-queries = {}
 # utility functions
 {compile-and-execute-livescript} = require \./utils
 
-console.log "Connectin to", config.mongo, config.mongo-options
+console.log "Connecting to", config.mongo, config.mongo-options
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
@@ -367,6 +367,9 @@ app.get "/delete/branch/:branchId", (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
 
+    req.connection.set-timeout config.timeout ? 120000
+    res.connection.set-timeout config.timeout ? 120000
+
     {server-name, database, collection, multi-query, query, cache, query-token, parameters = "{}"}:document = req.body    
 
     err, result <-  execute-query query-database, document
@@ -387,6 +390,7 @@ app.post \/keywords/:type, (req, res) ->
     | \mongodb => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
     | \mssql => (require \./query-context/mssql-query.ls).keywords req.body.connection
     | \curl => (require \./query-context/curl-query.ls).keywords req.body.connection
+    | \multi => (require \./query-context/mongo-db-query.ls).keywords req.body.connection
     | _ => (callback) -> callback "Invalid connection type: #{req.params.type}"
 
     return die res, err if !!err
@@ -554,6 +558,9 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
 
     updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
+
+    req.connection.set-timeout config.timeout ? 120000
+    res.connection.set-timeout config.timeout ? 120000
 
     run = (func)->
         err, result <- func
