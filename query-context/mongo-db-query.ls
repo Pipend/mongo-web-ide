@@ -10,24 +10,22 @@ objectify = (a) -> JSON.parse <| JSON.stringify a
 poll = {}
 
 # delegate
-kill = (db, client, query, start-time, callback) ->
+kill = (db, client, start-time, callback) ->
     return callback new Error "_serverState is not connected", null if 'connected' != db.serverConfig?._serverState
     db.collection '$cmd.sys.inprog' .findOne (err, data) ->
+        return callback err, null if !!err
         try
-            return callback err, null if !!err
+            # queries = data.inprog 
 
-            queries = data.inprog 
+            ## first try by matching query objects
+            # oquery = objectify query
+            # the-query = queries |> find (-> !!it.query?.pipeline and objectify it.query.pipeline === oquery)        
 
-            # first try by matching query objects
-            oquery = objectify query
-            the-query = queries |> find (-> !!it.query?.pipeline and objectify it.query.pipeline === oquery)        
-
-            if !the-query
-                # second try by matching time
-                now = new Date!.value-of!
-                delta = now - start-time
-                the-query := queries |> sort-by (-> delta - it.microsecs_running/1000) |> (.0)
-            
+            # if !the-query
+            # second try by matching time
+            now = new Date!.value-of!
+            delta = now - start-time
+            the-query = data.inprog |> sort-by (-> delta - it.microsecs_running/1000) |> (.0)
 
             if !!the-query
                 console.log "Canceling op #{the-query.opid}"
@@ -37,10 +35,12 @@ kill = (db, client, query, start-time, callback) ->
                 db.close!
                 client.close!
                 callback null, \killed
+
             else
                 callback new Error "Query could not be found #{query}\nStarted at: #{start-time}", null
+
         catch error
-            callback error, null
+            callback (new Error "uncaught error"), null
 
 # utility function for executing a single raw mongodb query
 # f :: (db, callback) --> void;
@@ -57,14 +57,13 @@ execute-mongo-database-query-func = (query-id, f, server-name, database, timeout
 
     db = mongo-client.db database
 
-    start-time = new Date!.value-of!
+    start-time = new Date!.value-of!    
 
-    poll[query-id] = {
+    poll[query-id] =
         kill: (kill-callback) ->
-            err, result <- kill db, mongo-client, query, start-time
+            err, result <- kill db, mongo-client, start-time
             delete poll[query-id]
             kill-callback err, result
-    }
 
     set-timeout do 
         -> 
@@ -72,16 +71,14 @@ execute-mongo-database-query-func = (query-id, f, server-name, database, timeout
             poll[query-id]?.kill (kill-error, kill-result) -> 
                 return console.log \kill-error, kill-error if !!kill-error
                 console.log \kill-result, kill-result
-        timeout
+        timeout    
 
     err, result <- f db
-
     mongo-client.close!
     return callback (new Error "query was killed #{query-id}") if !poll[query-id]
     delete poll[query-id]
     return callback (new Error "mongodb error: #{err.to-string!}"), null if !!err
-
-    callback null, result
+    callback null, result    
 
 # utility function for executing a single mongodb query from ide
 export execute-mongo-query = (query-id, type, server-name, database, collection, query, timeout, callback) !-->
@@ -104,8 +101,6 @@ export execute-mongo-query = (query-id, type, server-name, database, collection,
         return callback null, {result: {collection-name: res.collection-name, tag: res.db.tag}}
 
     callback null, res
-
-    
 
 # private utility
 convert-query-to-valid-livescript = (query)->
@@ -207,12 +202,11 @@ export keywords = ({server-name, database, collection}:connection, callback) !--
             $multiply $ne $not $or $out $project $push $redact $second $set-difference $set-equals $set-intersection $set-is-subset $set-union $size $skip $sort 
             $strcasecmp $substr $subtract $sum $to-lower $to-upper $unwind $week $year]>
 
-
 export connections = ({connection, database}, callback) !--> 
 
     if !connection
         # return the list of all connecitons
-        return callback null, connections: (config.connection-strings |> map (.name))
+        return callback null, connections: (config.connection-strings |> map ({display, name}) -> {display, name})    
 
     err, result <- switch
         |  !database => (callback) !->
@@ -232,7 +226,7 @@ export connections = ({connection, database}, callback) !-->
             f = (db, callback) !-->
                 err, res <- db.collectionNames
                 return callback err, null if !!err
-                callback null, (res |> map (.name))
+                callback null, (res |> map (.name) >> (.split \.) >> (.1))
 
             err, collections <- execute-mongo-database-query-func (new Date!.value-of!), f, connection, database, 5000
             return callback err, null if !!err
@@ -241,3 +235,4 @@ export connections = ({connection, database}, callback) !-->
 
     console.log \result, result
     callback err, result
+

@@ -463,8 +463,8 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
         # collections
         {connections} <- $.post "/connections/mongodb", "{}"
         $ '#server-name option' .remove!
-        connections.sort!.for-each (c) ->
-            $ '#server-name' .append <| $ "<option>#{c}</option>"
+        connections.sort!.for-each ({name, display}) ->
+            $ '#server-name' .append <| $ "<option value='#{name}'>#{display}</option>"
 
 
         # databases
