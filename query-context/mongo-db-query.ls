@@ -227,7 +227,11 @@ export connections = ({connection, database}, callback) !-->
             f = (db, callback) !-->
                 err, res <- db.collectionNames
                 return callback err, null if !!err
-                callback null, (res |> map (.name) >> (.split \.) >> (.1))
+                callback do 
+                    null
+                    res |> map ({name}) ->
+                        return name if (name.index-of \.) == -1
+                        name .split \. .1
 
             err, collections <- execute-mongo-database-query-func (floor <| Math.random! * 1000000), f, connection, database, 5000
             return callback err, null if !!err
