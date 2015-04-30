@@ -4,7 +4,7 @@
 module.exports = React.create-class {
 
     render: ->
-        href = "#{@.props.base-url}/rest/#{@.state.layer}/#{@.state.cache}/#{@.props.branch-id}#{if @.state.use-latest-query then '' else '/' + @.props.query-id}?#{@.props.query-string}"
+        href = decode-URI-component "#{@.props.base-url}/rest/#{@.state.layer}/#{@.state.cache}/#{@.props.branch-id}#{if @.state.use-latest-query then '' else '/' + @.props.query-id}?#{@.props.query-string}"
         div {class-name: \link-generator},
             div null,
                 label null, \layer
