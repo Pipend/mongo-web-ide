@@ -27,13 +27,16 @@ client-storage = require \./client-storage.ls
 {conflict-dialog} = require \./conflict-dialog.ls
 $ = require \jquery-browserify
 {key} = require \keymaster
+link-generator = require \./link-generator.ls
 {get-presentation-context} = require \./presentation-context.ls
 {search-queries-by-name, queries-in-same-tree} = require \./queries.ls
 {query-search} = require \./query-search.ls
+querystring = require \querystring
 React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
 {compile-and-execute-livescript} = require \./utils.ls
+
 
 # module-global variables  
 chart = null
@@ -306,7 +309,7 @@ get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, r
                 history.push-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
                 remote-document-states.unshift document-state
                 client-storage.delete-document-state query-id
-                callback null
+                callback null, document-state
                             
 
             # non fast-forward case
@@ -400,8 +403,21 @@ resize-ui = ->
     $ \.details .css \left, 
         ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
     $ \.parameters .css \left, 
-        ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#info .outer-width!) / 2)
+        ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#params .outer-width!) / 2)
+    $ \.link-generator-container .css \left, 
+        ($ \#share .offset!.left - ($ \.link-generator-container .outer-width! - $ \#share .outer-width!) / 2)
     chart.update! if !!chart
+
+render-link-generator = ({branch-id, query-id, parameters}) ->
+    [err, result] = compile-and-execute-livescript parameters
+    React.render do 
+        React.create-element link-generator, {
+            base-url: window.location.href.split \/branch .0
+            branch-id
+            query-id            
+            query-string: if !!err then "" else (querystring.stringify result)
+        }
+        $ \.link-generator-container .get 0
 
 # makes a POST request to the server to save the current document-object
 save-to-server = (document-state, callback)->
@@ -450,8 +466,7 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
             if !!ui.left-editors-width
                 $ \.editors .css \width, ui.left-editors-width
         resize-ui!
-        resize-editors!
-
+        resize-editors!    
 
     populate-drop-downs = (callback) ->
         <[server-name database collection]> |> map -> ($ '#' + it).off \change
@@ -550,8 +565,7 @@ $ ->
     query-editor := create-livescript-editor \query-editor
     transformation-editor := create-livescript-editor \transformation-editor
     presentation-editor := create-livescript-editor \presentation-editor
-    parameters-editor := create-livescript-editor \parameters-editor
-
+    parameters-editor := create-livescript-editor \parameters-editor    
 
     # load document & update DOM, editors
     {query-id}? = get-identifiers window.location.href, window.remote-document-states
@@ -656,12 +670,13 @@ $ ->
         [, save-function] = get-save-function document-state, window.remote-document-states
 
         # update the difference indicator between client & server code
-        save-function (err)-> 
+        save-function (err, document-state) ->
             return alert err if !!err
             update-remote-state-button history.state, window.remote-document-states
+            render-link-generator document-state
 
         # prevent default behaviour of displaying the save-dialog
-        false
+        false    
 
     key 'command + s', (e)-> save-state get-document-state history.state
     $ \#save .on \click, (e)-> save-state get-document-state history.state
@@ -679,6 +694,7 @@ $ ->
     # # info
     $ \#info .on \click, -> $ \.details .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
+    $ \#share .on \click, -> $ \.link-generator-container .toggle!
 
     # # switch between client & server code
     $ \#remote-state .on \click, ->
@@ -734,6 +750,9 @@ $ ->
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
         false
+
+    render-link-generator (get-document-state history.state)
+    ace.edit \parameters-editor .on \change, -> render-link-generator (get-document-state history.state)
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
     
