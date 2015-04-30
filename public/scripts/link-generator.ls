@@ -4,7 +4,7 @@
 module.exports = React.create-class {
 
     render: ->
-        href = decode-URI-component "#{@.props.base-url}/rest/#{@.state.layer}/#{@.state.cache}/#{@.props.branch-id}#{if @.state.use-latest-query then '' else '/' + @.props.query-id}?#{@.props.query-string}"
+        href = decode-URI-component "#{@.props.base-url}/rest/#{@.state.layer}/#{if @.state.cache == \sliding then @.state.cache-expiry else @.state.cache}/#{@.props.branch-id}#{if @.state.use-latest-query then '' else '/' + @.props.query-id}?#{@.props.query-string}"
         div {class-name: \link-generator},
             div null,
                 label null, \layer
@@ -12,8 +12,9 @@ module.exports = React.create-class {
                     value: @.state.layer
                     on-change: ({current-target:{value}}) ~> @.set-state {layer: value}
                 },
-                    <[query transformation presentation]> |> map ->
-                        option {value: it}, it
+                    option {value: \-}, \query
+                    option {value: \transformation}, \transformation
+                    option {value: \presentation}, \presentation                    
             div null,
                 label {html-for: \use-latest-query}, 'use latest query'
                 input {
@@ -30,8 +31,12 @@ module.exports = React.create-class {
                 },
                     <[true false sliding]> |> map ->
                         option {value: it}, it
+            if @.state.cache == \sliding
+                div null,
+                    label null, 'cache expiry'
+                    input {type: \text, value: @.state.cache-expiry, on-change: ({current-target:{value}}) ~> @.set-state {cache-expiry: value}}
             a {href, target: "_blank"}, href
 
     get-initial-state: ->
-        {layer: \presentation, use-latest-query: true, cache: false}
+        {layer: \presentation, use-latest-query: true, cache: \false, cache-expiry: 0}
 }
