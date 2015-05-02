@@ -18,8 +18,11 @@ config =
   all:
     allow-disk-use: true
     authentication:
-      white-list: <[127.0.0.0/31 192.168.0.0/16]>
-      strategy: \github
+      white-list: [{ip: \127.0.0.1/16, username: \guest, avatar: \public/images/guest.png}]
+      permissions: 
+        editor: <[WhiteListed]>
+        api: <[WhiteListed]>
+      strategy: <[github]>
       strategies:
         github:
           options:
@@ -55,8 +58,7 @@ config =
 
   preview: {}
 
-  local:
-    authentication: strategy: \none
+  local:    
     browserify-debug-mode: true    
     mongo: "mongodb://127.0.0.1:27017/Mongo-Web-IDE/"
 

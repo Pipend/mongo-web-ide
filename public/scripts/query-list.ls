@@ -15,7 +15,7 @@ query-list = React.create-class do
             div {class-name: \menu},
                 a {class-name: \logo}
                 a {class-name: \button, href: \/branch, target: \_blank}, \New
-                a {class-name: \link, href:\/logout}, \Logout
+                a {class-name: \link, href: (if window.user.role == \AuthUser then \Logout else \Login)}, (if window.user.role == \AuthUser then \Logout else \Login)
                 
             # Search
             div {class-name: \search, on-input: @on-search-string-change},

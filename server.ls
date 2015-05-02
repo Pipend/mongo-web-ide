@@ -154,54 +154,6 @@ parse-parameters = (query-value, user-defined-value)->
 get-ip = (req)->
     (req?.query?['x-ip'] || req?.headers?['x-forwarded-for'] || req?.connection?.remoteAddress || req?.socket?.remoteAddress || req?.connection?.socket?.remoteAddress)?.split(":")?[0]
 
-# github passport strategy
-if config.authentication.strategy == \github
-    options = config.authentication.strategies[config.authentication.strategy].options
-    passport.use new github-strategy do 
-        {
-            clientID: options.client-id
-            client-secret: options.client-secret
-            callback-URL: 'http://127.0.0.1:3081/auth/github/callback'
-            redirect-uri: 'http://127.0.0.1:3081/auth/github/callback'
-        }
-        (accessToken, refreshToken, profile, done) ->
-
-            die = (err)->
-                console.log "github authentication error: #{err}"
-                return done err, null 
-
-            organizations-url = profile?._json?.organizations_url
-            return die "organizations url not found" if !organizations-url
-
-            (error, response, body) <- request do 
-                headers:
-                    'User-Agent': "Mongo Web IDE"
-                url: organizations-url
-            return die error if !!err
-
-            organization-member = (JSON.parse body) |> find (.login == options.organization-name)
-            return die "not part of #{config.organization-name}" if !organization-member
-
-            err, document <- query-database.collection \users .find-one {user-id: profile._json.id}
-            return done err, null if !!err 
-            
-            err, result <- do ->
-                return (-> it null, [document]) if !!document
-                (callback) ->
-                    {id, login, avatar_url} = profile._json
-                    query-database.collection \users .insert {user-id: id, username: login, avatar: avatar_url}, callback
-
-            done null, result.0
-
-    # convert github data to user-id
-    passport.serialize-user ({_id}, done)-> 
-        done null, _id
-
-    # convert user-id to github data
-    passport.deserialize-user (_id, done)-> 
-        done null _id
-        # query-database.collection \users .find-one {_id: new ObjectID _id}, done
-
 # create & setup express app
 app = express!
     ..set \views, __dirname + \/
@@ -236,33 +188,131 @@ app = express!
 
         req.session.last-url = req.url if !req.session.last-url
 
-        ip = get-ip req
-        Netmask = require \netmask .Netmask
-        whites = config.authentication.white-list ? [] |> map -> new Netmask it
-
-        # get the user object from query string & store it in the session (NO MORE GUEST USER)
-        # user-id = req.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy == \none then 1 else null)
-        # req._passport.session.user = {id: user-id, username: \guest} if !!user-id
+        req.user = 
+            | (typeof req._passport.session.user) != \undefined => {} <<< req._passport.session.user <<< {role: \AuthUser}
+            | _ =>
+                ip = get-ip req
+                Netmask = require \netmask .Netmask
+                {username, avatar}:white-listed? = config.authentication.white-list
+                    |> map ({ip}:white) -> {} <<< white <<< {netmask: new Netmask ip} 
+                    |> find (.netmask.contains ip)
+                if !!white-listed then {username, avatar, role: \WhiteListed} else {username: \guest, avatar: \public/images/guest.png, role: \Anonymous}
 
         next!
 
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
+# github passport strategy
+if \github in config.authentication.strategy
+    options = config.authentication.strategies[config.authentication.strategy].options
+    passport.use new github-strategy do 
+        {
+            clientID: options.client-id
+            client-secret: options.client-secret
+            callback-URL: 'http://127.0.0.1:3081/auth/github/callback'
+            redirect-uri: 'http://127.0.0.1:3081/auth/github/callback'
+        }
+        (accessToken, refreshToken, profile, done) ->
+
+            die = (err)->
+                console.log "github authentication error: #{err}"
+                return done err, null 
+
+            organizations-url = profile?._json?.organizations_url
+            return die "organizations url not found" if !organizations-url
+
+            (error, response, body) <- request do 
+                headers:
+                    'User-Agent': "Mongo Web IDE"
+                url: organizations-url
+            return die error if !!err
+
+            organization-member = (JSON.parse body) |> find (.login == options.organization-name)
+            return die "not part of #{config.organization-name}" if !organization-member
+
+            err, document <- query-database.collection \users .find-one {user-id: profile._json.id}
+            return done err, null if !!err 
+            
+            err, result <- do ->
+                return (-> it null, [document]) if !!document
+                (callback) ->
+                    {id, login, avatar_url} = profile._json
+                    query-database.collection \users .insert {username: login, avatar: avatar_url}, callback
+
+            done null, result.0
+
+    # convert github data to user-id
+    passport.serialize-user (user, done)-> 
+        done null, user
+
+    # convert user-id to github data
+    passport.deserialize-user (obj, done)-> 
+        done null obj
+        # query-database.collection \users .find-one {_id: new ObjectID _id}, done
+
     # redirect user to github
-    ..get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+    app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
 
     # user is redirected to this route by github
-    ..get \/auth/github/callback, (passport.authenticate \github, {failure-redirect: \/login}), (req, res) ->
+    app.get \/auth/github/callback, (passport.authenticate \github, {failure-redirect: \/login}), (req, res) ->
         redirect-url = 
             | ((typeof req.session.last-url) != \undefined) and <[login logout auth]> |> all (-> (req.session.last-url.index-of it) < 0) => req.session.last-url
             | _ => \/
         req.session.last-url = null if !!req.session.last-url
-        res.redirect redirect-url
+        res.redirect redirect-url    
+
+# uses query-id if present otherwise executes the latest query in the given branch
+app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->    
+    
+    return res.redirect \/login if req?.user?.role not in config.authentication.permissions.api
+        
+    cache = match req.params.cache
+    | \false => false
+    | \true => true
+    | otherwise => parse-int req.params.cache
+
+    {query-id, branch-id} = req.params
+
+    get-query = do ->
+        return (get-query-by-id query-database, query-id) if !!query-id
+        return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
+        (callback)-> callback "branch-id & query-id are undefined", null
+
+    (err, {parameters, presentation}:document?) <- get-query
+    return die res, err if !!err
+    return die res, "unable to find query: #{req.params.query-id}" if document == null
+
+    [err, parameters-object] = compile-and-execute-livescript (parameters or ""), {}
+    return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
+
+    updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
+
+    req.connection.set-timeout config.timeout ? 120000
+    res.connection.set-timeout config.timeout ? 120000
+
+    run = (func)->
+        err, result <- func
+        return die res, err if !!err
+        res.end JSON.stringify result, null, 4    
+
+    return run (execute-query query-database, updated-document) if req.params.layer == \-
+    return run (execute-and-transform-query updated-document) if req.params.layer == \transformation
+
+    err, transformed-result <- execute-and-transform-query updated-document
+    return die res, err if !!err    
+    res.render do
+        \public/presentation.html
+        {
+            transformed-result
+            presentation
+            parameters: req.query
+        }
+
 
 # login with github page
 app.get \/login, (req, res)-> 
-    return (res.redirect \/) if req.is-authenticated!
+    return (res.redirect \/) if req?.user?.role == \AuthUser
     res.render \public/login.html
 
 # invokes req.logout!
@@ -272,17 +322,17 @@ app.get \/logout, (req, res)->
 
 # ROUTES FROM THIS POINT ON REQUIRE AUTHENTICATION
 app.use (req, res, next)->
-    return next! if req.is-authenticated!
+    return next! if req?.user?.role in config.authentication.permissions.editor 
     res.redirect \/login
 
 # display a list of all queries
-app.get \/, (req, res)-> res.render \public/query-list.html, {req.user}
+app.get \/, (req, res)-> res.render \public/query-list.html, {user: req.user}
 
 # load a new document
 <[/branch /branch/local/:localQueryId /branch/local-fork/:localQueryId]>
     |> each ->
         app.get it, (req, res)->
-            res.render \public/ide.html, {remote-document-state: get-default-document-state!} 
+            res.render \public/ide.html, {user: req.user, remote-document-state: get-default-document-state!} 
 
 # redirect to latest query in the branch
 app.get "/branch/:branchId([a-zA-Z0-9]+)", (req, res)->
@@ -306,7 +356,7 @@ app.get "/branch/:branchId([a-zA-Z0-9]+)/:queryId([a-zA-Z0-9]+)", (req, res)->
         res.send <| JSON.stringify remote-document-state
 
     else
-        res.render \public/ide.html, {remote-document-state: (remote-document-state or get-default-document-state!)}
+        res.render \public/ide.html, {user: req.user, remote-document-state: (remote-document-state or get-default-document-state!)}
 
 # set the status property of the query to false
 app.get "/delete/query/:queryId", (req, res)->
@@ -429,8 +479,8 @@ app.get \/list, (req, res)->
                     collection: $last: \$collection
                     creation-time: $first: \$creationTime
                     modification-time: $last: \$creationTime
-                    created-by: $first: \$userId
-                    modified-by: $last: \$userId                    
+                    created-by: $first: \$user
+                    modified-by: $last: \$user
             }
             {
                 $match: 
@@ -451,17 +501,8 @@ app.get \/list, (req, res)->
         ]
     return die res, err if !!err
 
-    err, users <- query-database.collection \users .find {} .to-array
-    return die res, er if !!err 
-
-    res.end do 
-        JSON.stringify do 
-            queries 
-                |> map ({created-by, modified-by}:query) ->  
-                    {} <<< query <<< {
-                        created-by: (users |> find -> it._id.to-string! == created-by?.to-string!)
-                        modified-by: (users |> find -> it._id.to-string! == modified-by?.to-string!)
-                    }
+    res.end JSON.stringify queries 
+                
     
 # save the code to mongodb
 app.post \/save, (req, res)->
@@ -496,7 +537,11 @@ app.post \/save, (req, res)->
 
         return die res, JSON.stringify {queries-in-between}
     
-    err, records <- query-database.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, user-id: (new ObjectID req._passport.session.user), status: true}, {w: 1}
+    err, records <- query-database.collection \queries .insert req.body <<< {
+        user: req.user
+        creation-time: new Date!.get-time!
+        status: true
+    }, {w: 1}
     return die res, err if !!err
 
     res.end JSON.stringify records.0
@@ -553,51 +598,6 @@ app.get "/queries/tree/:queryId", (req, res)->
 
     return die res, err if !!err
     res.end JSON.stringify (results |> map ({creation-time}: query)-> {} <<< query <<< {creation-time: moment creation-time .format "ddd, DD MMM YYYY, hh:mm:ss a"}), null, 4
-
-# uses query-id if present otherwise executes the latest query in the given branch
-app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->    
-    
-    cache = match req.params.cache
-    | \false => false
-    | \true => true
-    | otherwise => parse-int req.params.cache
-
-    {query-id, branch-id} = req.params
-
-    get-query = do ->
-        return (get-query-by-id query-database, query-id) if !!query-id
-        return (get-latest-query-in-branch query-database, branch-id) if !!branch-id
-        (callback)-> callback "branch-id & query-id are undefined", null
-
-    (err, {parameters, presentation}:document?) <- get-query
-    return die res, err if !!err
-    return die res, "unable to find query: #{req.params.query-id}" if document == null
-
-    [err, parameters-object] = compile-and-execute-livescript (parameters or ""), {}
-    return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
-
-    updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
-
-    req.connection.set-timeout config.timeout ? 120000
-    res.connection.set-timeout config.timeout ? 120000
-
-    run = (func)->
-        err, result <- func
-        return die res, err if !!err
-        res.end JSON.stringify result, null, 4    
-
-    return run (execute-query query-database, updated-document) if req.params.layer == \-
-    return run (execute-and-transform-query updated-document) if req.params.layer == \transformation
-
-    err, transformed-result <- execute-and-transform-query updated-document
-    return die res, err if !!err    
-    res.render do
-        \public/presentation.html
-        {
-            transformed-result
-            presentation
-            parameters: req.query
-        }
 
 # plot tree
 app.get "/tree/:queryId", (req, res)-> res.render "public/tree.html", {query-id: req.params.query-id}

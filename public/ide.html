@@ -59,7 +59,7 @@
             </a>
             <a class="button" id="cancel">Cancel</a>
             <a class="button" id="share">Share</a>
-            <a class="link" href="/logout">Logout</a>
+            <a class="link" href="/<%= user.role == 'AuthUser' ? 'logout' : 'login' %>"><%= user.role == 'AuthUser' ? 'Logout' : 'Login' %></a>
         </div>
         <div class="mongodb-info-container" style="display: none">
         </div>
