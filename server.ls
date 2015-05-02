@@ -193,7 +193,7 @@ app = express!
             | _ =>
                 ip = get-ip req
                 Netmask = require \netmask .Netmask
-                {username, avatar}:white-listed? = config.authentication.white-list
+                {username, avatar}:white-listed? = (config.authentication.white-list ? [])
                     |> map ({ip}:white) -> {} <<< white <<< {netmask: new Netmask ip} 
                     |> find (.netmask.contains ip)
                 if !!white-listed then {username, avatar, role: \WhiteListed} else {username: \guest, avatar: \public/images/guest.png, role: \Anonymous}

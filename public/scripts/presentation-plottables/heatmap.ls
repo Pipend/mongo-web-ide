@@ -1,44 +1,27 @@
 {map, id} = require \prelude-ls
+$ = require \jquery-browserify
 
-module.exports = ({Plottable, nv, plot-chart}) -> new Plottable do 
-    (view, result, {x, y, key, values, y-axis, x-axis, transition-duration, reduce-x-ticks, rotate-labels, show-controls, group-spacing, show-legend}, continuation) !-->
+module.exports = ({Plottable}) -> new Plottable do 
+    (view, result, {width, height, background}, continuation) !-->
 
-        <- nv.add-graph
+        heatmap-container = $ view .find \.heatmap-container
 
-        result := result |> map (-> {key: (key it), values: (values it)})
+        if heatmap-container.size! == 0
+            heatmap-container = $ "<div/>" .add-class \heatmap-container
+            $ view .append heatmap-container
 
-        chart = nv.models.multi-bar-chart!
-            .x x
-            .y y
-            .transition-duration transition-duration
-            .reduce-x-ticks reduce-x-ticks
-            .rotate-labels rotate-labels
-            .show-controls show-controls
-            .group-spacing group-spacing
-            .show-legend show-legend
-            
-        chart 
-            ..x-axis.tick-format x-axis.format
-            ..y-axis.tick-format y-axis.format
+        heatmap-container .css {width, height, background-image: "url('#{background}')"}
 
-        plot-chart view, result, chart
-        
-        #chart.update!
+        heatmap-instance = heatmap-container .data \heatmap-instance
+
+        if !heatmap-instance
+            heatmap-instance = h337.create {container: heatmap-container.get 0}
+            heatmap-container.data \heatmap-instance, heatmap-instance
+
+        heatmap-instance.set-data result
 
     {
-        key: (.key)
-        values: (.values)
-        x: (.0)
-        y: (.1)
-        y-axis:
-            format: id
-        x-axis:
-            format: id
-        transition-duration: 300
-        reduce-x-ticks: false # If 'false', every single x-axis tick label will be rendered.
-        rotate-labels: 0 # Angle to rotate x-axis labels.
-        show-controls: true
-        group-spacing: 0.1 # Distance between each group of bars.
-        show-legend: true
-
+        width: 320
+        height: 568
+        background: null
     }
