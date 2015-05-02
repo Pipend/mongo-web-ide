@@ -36,6 +36,7 @@ React = require \react
 {get-transformation-context} = require \./transformation-context.ls
 _ = require \underscore
 {compile-and-execute-livescript} = require \./utils.ls
+mongodb-info = require \./mongodb-info.ls
 
 
 # module-global variables  
@@ -44,6 +45,7 @@ presentation-editor = null
 query-editor = null
 transformation-editor = null
 parameters-editor = null
+mongodb-info-instance = null
 
 # creates, configures & returns a new instance of ace-editor
 create-livescript-editor = (element-id)->
@@ -196,11 +198,12 @@ fork = ({query-id, tree-id}:document-state, remote-document-states) ->
 
 # gets the document state from the dom elements
 get-document-state = ({query-id, tree-id, branch-id, parent-id}:identifiers?)->
+    mongodb-connection-info = (mongodb-info-instance?.props or {})
+        |> obj-to-pairs
+        |> filter ([key]) -> key in <[serverName database collection]>
+        |> pairs-to-obj
     {} <<< (if !!identifiers then {query-id, tree-id, branch-id, parent-id} else {}) <<< {
         query-name: $ \#query-name .val!
-        server-name: $ \#server-name .val!
-        database: $ \#database .val!,
-        collection: $ \#collection .val!
         query: query-editor.get-value!
         transformation: transformation-editor.get-value!
         presentation: presentation-editor.get-value!
@@ -214,7 +217,8 @@ get-document-state = ({query-id, tree-id, branch-id, parent-id}:identifiers?)->
                     self = $ this
                     id: (self.attr \id), height: self.height!
                 .to-array!
-    }
+    } <<< mongodb-connection-info
+
 
 # get identifiers from local storage, remote state, null otherwise
 get-identifiers = (url, remote-document-states)->
@@ -248,7 +252,7 @@ get-query-parameters = ->
 get-save-function = ({query-id, branch-id, tree-id, parent-id}:document-state, remote-document-states)->
 
     # if there are no changes to the document return noop as the save function
-    return [false, (callback)-> callback null] if !has-document-changed document-state, remote-document-states
+    return [false, (callback)-> callback null, document-state] if !has-document-changed document-state, remote-document-states
 
     # if the document has changed since the last save then 
     # return a function that will POST the new document to the server
@@ -400,15 +404,15 @@ resize-ui = ->
         ..css {left: $ \.output .offset!.left, top: $ \.output .offset!.top}
         ..width ($ \.output .width!)
         ..height ($ \.output .height!)    
-    $ \.details .css \left, 
-        ($ \#info .offset!.left - ($ \.details .outer-width! - $ \#info .outer-width!) / 2)
+    $ \.mongodb-info-container .css \left, 
+        ($ \#info .offset!.left - ($ \.mongodb-info-container .outer-width! - $ \#info .outer-width!) / 2)
     $ \.parameters .css \left, 
         ($ \#params .offset!.left - ($ \.parameters .outer-width! - $ \#params .outer-width!) / 2)
     $ \.link-generator-container .css \left, 
         ($ \#share .offset!.left - ($ \.link-generator-container .outer-width! - $ \#share .outer-width!) / 2)
     chart.update! if !!chart
 
-render-link-generator = ({branch-id, query-id, parameters}) ->
+render-link-generator = ({branch-id, query-id, parameters}?) ->
     [err, result] = compile-and-execute-livescript parameters
     React.render do 
         React.create-element link-generator, {
@@ -447,9 +451,6 @@ try-parse-json = (json-string)->
 update-dom-with-document-state = ({query-name, server-name, database, collection, query, parameters, transformation, presentation, multi-query, type, ui}:document-state, update-ui, callback) ->
     document.title = query-name
     $ \#query-name .val query-name
-    $ \#server-name .val server-name
-    $ \#database .val database
-    $ \#collection .val collection
     $ \#multi-query .0.checked = multi-query
     $ \#query-type .val (type ? \mongodb)
     query-editor.set-value query
@@ -468,54 +469,8 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
         resize-ui!
         resize-editors!    
 
-    populate-drop-downs = (callback) ->
-        <[server-name database collection]> |> map -> ($ '#' + it).off \change
-
-        $ '#collection' .on \change, ->
-            document-state.collection = $ '#collection' .val!
-            callback!
-
-        # collections
-        {connections} <- $.post "/connections/mongodb", "{}"
-        $ '#server-name option' .remove!
-        connections.sort!.for-each ({name, display}) ->
-            $ '#server-name' .append <| $ "<option value='#{name}'>#{display}</option>"
-
-
-        # databases
-        $ '#database' .on \change, ->
-            document-state.database = $ '#database' .val!
-            {collections} <- $.post "/connections/mongodb", JSON.stringify {connection: ($ \#server-name .val!), database: ($ \#database .val!)}
-            $ '#collection option' .remove!
-            collections.sort!.for-each (c) ->
-                $ '#collection' .append <| $ "<option>#{c}</option>"
-
-            $ '#collection' 
-                .val document-state.collection
-                .change!
-            
-        # connections
-        $ '#server-name'
-            .on \change,  ->
-                document-state.server-name = $ '#server-name' .val!
-                {databases} <- $.post "/connections/mongodb", JSON.stringify {connection: ($ \#server-name .val!)}
-                $ '#database option' .remove!
-                databases.sort!.for-each (c) ->
-                    $ '#database' .append <| $ "<option>#{c}</option>"
-                $ '#database' 
-                    .val document-state.database
-                    .change!
-            .val document-state.server-name
-            .change!
-
-
-    <- populate-drop-downs
-
-    # remove callback from collection on change, callback should only be called once
-    $ '#collection' 
-        .off \change
-        .on \change, ->
-            document-state.collection = $ '#collection' .val!
+    mongodb-info-instance.props = {} <<< mongodb-info-instance.props <<< {server-name, database, collection}
+    React.render mongodb-info-instance, ($ '.mongodb-info-container' .get 0)    
 
     callback null, null
 
@@ -524,6 +479,7 @@ update-dom-with-document-state = ({query-name, server-name, database, collection
 update-remote-state-button = (document-state, remote-document-states)->
     $ \#remote-state .toggle !!remote-document-states.0.query-id
     $ \#remote-state .toggle-class "highlight orange" (has-document-changed document-state, remote-document-states)
+    resize-ui!
 
 # on dom ready
 $ ->
@@ -565,7 +521,9 @@ $ ->
     query-editor := create-livescript-editor \query-editor
     transformation-editor := create-livescript-editor \transformation-editor
     presentation-editor := create-livescript-editor \presentation-editor
+
     parameters-editor := create-livescript-editor \parameters-editor    
+    ace.edit \parameters-editor .on \change, -> render-link-generator (get-document-state history.state)        
 
     # load document & update DOM, editors
     {query-id}? = get-identifiers window.location.href, window.remote-document-states
@@ -578,11 +536,21 @@ $ ->
     else 
         document-state = {} <<< window.remote-document-states.0 <<< {branch-id: \local, query-id: base62.encode Date.now!}            
 
-    history.replace-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"
+    history.replace-state document-state, document-state.name, "/branch/#{document-state.branch-id}/#{document-state.query-id}"    
 
+    # create mongodb-info instance
+    {server-name, database, collection}? = document-state
+    mongodb-info-instance := React.create-element mongodb-info, {} <<< {server-name, database, collection} <<< {
+        on-change: (mongodb-connection-info) ->
+            mongodb-info-instance.props = mongodb-connection-info
+            React.render mongodb-info-instance, ($ '.mongodb-info-container' .get 0)
+            update-remote-state-button (get-document-state history.state), window.remote-document-states
+    }
+    React.render mongodb-info-instance, ($ '.mongodb-info-container' .get 0)
 
     <- update-dom-with-document-state document-state, true
 
+    render-link-generator document-state
 
     # auto-complete mongo keywords, transformation-context keywords & presentation-context keywords
     do ->
@@ -604,7 +572,7 @@ $ ->
         alphabet = [(String.fromCharCode i) for i in [65 to 65+25] ++ [97 to 97+25] ]
 
         # auto complete for mongo collection properties
-        {server-name, database, collection} = get-document-state!
+        {server-name, database, collection} = get-document-state history.state
 
         # TODO: get the type of query from somewhere
         query-context-keywords <- $.post "/keywords/#{document-state.type ? 'mongodb'}", JSON.stringify {connection: {server-name, database, collection}}
@@ -620,8 +588,6 @@ $ ->
 
         presentation-editor-keywords = do ->            
             ([get-presentation-context!, (require \prelude-ls)] |> concat-map keywords-from-context) ++ alphabet
-
-        console.log presentation-editor-keywords
 
         ace-language-tools.add-completer {
             # :: Editor -> EditSession -> Range -> prefix :: String -> callback
@@ -692,7 +658,7 @@ $ ->
         window.open url, \_blank
 
     # # info
-    $ \#info .on \click, -> $ \.details .toggle!
+    $ \#info .on \click, -> $ \.mongodb-info-container .toggle!
     $ \#params .on \click, -> $ \.parameters .toggle!
     $ \#share .on \click, -> $ \.link-generator-container .toggle!
 
@@ -749,10 +715,7 @@ $ ->
                 window.open "/branch/#{branch-id}/#{query-id}", \_blank
                 React.unmount-component-at-node $query-search-container
         }), $query-search-container
-        false
-
-    render-link-generator (get-document-state history.state)
-    ace.edit \parameters-editor .on \change, -> render-link-generator (get-document-state history.state)
+        false    
 
     key 'esc', -> React.unmount-component-at-node $query-search-container
     

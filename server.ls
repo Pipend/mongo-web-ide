@@ -3,6 +3,7 @@ base62 = require \base62
 config = require \./config
 express = require \express
 session = require \express-session
+mongo-store = (require 'connect-mongo') session
 fs = require \fs
 md5 = require \MD5
 moment = require \moment # TODO: move to query-context
@@ -22,7 +23,8 @@ current-queries = {}
 # utility functions
 {compile-and-execute-livescript} = require \./utils
 
-console.log "Connecting to", config.mongo, config.mongo-options
+console.log "connecting to", config.mongo
+
 # connect to mongo-db
 (err, query-database) <- MongoClient.connect config.mongo, config.mongo-options
 return console.log err if !!err
@@ -149,9 +151,56 @@ parse-parameters = (query-value, user-defined-value)->
     | \Number => (if user-defined-value % 1 == 0 then parse-int else parse-float) query-value
     | otherwise => query-value
 
-
 get-ip = (req)->
     (req?.query?['x-ip'] || req?.headers?['x-forwarded-for'] || req?.connection?.remoteAddress || req?.socket?.remoteAddress || req?.connection?.socket?.remoteAddress)?.split(":")?[0]
+
+# github passport strategy
+if config.authentication.strategy == \github
+    options = config.authentication.strategies[config.authentication.strategy].options
+    passport.use new github-strategy do 
+        {
+            clientID: options.client-id
+            client-secret: options.client-secret
+            callback-URL: 'http://127.0.0.1:3081/auth/github/callback'
+            redirect-uri: 'http://127.0.0.1:3081/auth/github/callback'
+        }
+        (accessToken, refreshToken, profile, done) ->
+
+            die = (err)->
+                console.log "github authentication error: #{err}"
+                return done err, null 
+
+            organizations-url = profile?._json?.organizations_url
+            return die "organizations url not found" if !organizations-url
+
+            (error, response, body) <- request do 
+                headers:
+                    'User-Agent': "Mongo Web IDE"
+                url: organizations-url
+            return die error if !!err
+
+            organization-member = (JSON.parse body) |> find (.login == options.organization-name)
+            return die "not part of #{config.organization-name}" if !organization-member
+
+            err, document <- query-database.collection \users .find-one {user-id: profile._json.id}
+            return done err, null if !!err 
+            
+            err, result <- do ->
+                return (-> it null, [document]) if !!document
+                (callback) ->
+                    {id, login, avatar_url} = profile._json
+                    query-database.collection \users .insert {user-id: id, username: login, avatar: avatar_url}, callback
+
+            done null, result.0
+
+    # convert github data to user-id
+    passport.serialize-user ({_id}, done)-> 
+        done null, _id
+
+    # convert user-id to github data
+    passport.deserialize-user (_id, done)-> 
+        done null _id
+        # query-database.collection \users .find-one {_id: new ObjectID _id}, done
 
 # create & setup express app
 app = express!
@@ -175,10 +224,15 @@ app = express!
             req <<< {body: JSON.parse body}
             next!
     ..use (require \method-override)!
-    ..use (session {secret: 'keyword cat'})
+    ..use (session {
+        secret: 'keyword cat'
+        save-uninitialized: true
+        resave: true
+        store: new mongo-store {db: query-database}, (err) -> console.log "unable to setup mongo for session tracking: #{err}" if !!err
+    })
     ..use passport.initialize!
     ..use passport.session!
-    ..use (req, res, next)->
+    ..use (req, res, next) ->
 
         req.session.last-url = req.url if !req.session.last-url
 
@@ -186,75 +240,25 @@ app = express!
         Netmask = require \netmask .Netmask
         whites = config.authentication.white-list ? [] |> map -> new Netmask it
 
-        # get the user object from query string & store it in the session
-        user-id = req?.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy == \none then 1 else null)
-        req._passport.session.user = {id: user-id, username: \guest} if !!user-id
-
-        # get the user object from the session & store it in the request
-        # the req.is-authenticated() method checkes the request object
-        if !!req._passport.session.user
-            property = req?._passport?.instance?._userProperty or \user
-            req[property] = req._passport.session.user
+        # get the user object from query string & store it in the session (NO MORE GUEST USER)
+        # user-id = req.query?.user-id or (whites |> any (.contains ip)) or (if config.authentication.strategy == \none then 1 else null)
+        # req._passport.session.user = {id: user-id, username: \guest} if !!user-id
 
         next!
 
     ..use "/public" express.static "#__dirname/public"
     ..use "/node_modules" express.static "#__dirname/node_modules"
 
-console.log \authentication, config.authentication.strategy
-# github passport strategy
-if config.authentication.strategy == \github
-    options = config.authentication.strategies[config.authentication.strategy].options
-    passport.use new github-strategy do 
-        {
-            clientID: options.client-id
-            client-secret: options.client-secret
-        }
-        (accessToken, refreshToken, profile, done) ->
-
-            die = (err)->
-                console.log "github authentication error: #{err}"
-                return done err, null 
-
-            organizations-url = profile?._json?.organizations_url
-            return die "organizations url not found" if !organizations-url
-
-            (error, response, body) <- request do 
-                headers:
-                    'User-Agent': "Mongo Web IDE"
-                url: organizations-url
-            return die error if !!err
-
-            organization-member = (JSON.parse body) |> find (.login == options.organization-name)
-            return die "not part of #{config.organization-name}" if !organization-member
-
-            done null, profile    
-
     # redirect user to github
-    app.get \/auth/github, passport.authenticate \github, {scope: <[user]>}
+    ..get \/auth/github, passport.authenticate \github, {scope: <[user]>}
 
     # user is redirected to this route by github
-    app.get \/auth/github/callback, (req, res, next) ->
-        redirect-url = "/"
-        if !!req.session.last-url and <[login auth]> |> all (-> (req.session.last-url.index-of it) < 0)
-            redirect-url = req.session.last-url
-        (passport.authenticate \github, (err, user, info) ->
-            return next err if !!err
-            return res.redirect '/login' if !user
-            if !!req.session.last-url
-                req.session.last-url = null
-                err <- req.login user
-                return next err if !!err
-
-            res.redirect redirect-url ? "/"
-
-        )(req, res, next)
-
-# convert github data to user-id
-passport.serialize-user (user, done)-> done null, user
-
-# convert user-id to github data
-passport.deserialize-user (obj, done)-> done null, obj
+    ..get \/auth/github/callback, (passport.authenticate \github, {failure-redirect: \/login}), (req, res) ->
+        redirect-url = 
+            | ((typeof req.session.last-url) != \undefined) and <[login logout auth]> |> all (-> (req.session.last-url.index-of it) < 0) => req.session.last-url
+            | _ => \/
+        req.session.last-url = null if !!req.session.last-url
+        res.redirect redirect-url
 
 # login with github page
 app.get \/login, (req, res)-> 
@@ -408,7 +412,7 @@ app.post \/connections/:type, (req, res) ->
 # return a list of all queries
 app.get \/list, (req, res)->
     search-string = req.query?.name or ""
-    (err, results) <- query-database.collection \queries .aggregate do
+    err, queries <- query-database.collection \queries .aggregate do
         [
             {
                 $sort: _id: 1
@@ -425,6 +429,8 @@ app.get \/list, (req, res)->
                     collection: $last: \$collection
                     creation-time: $first: \$creationTime
                     modification-time: $last: \$creationTime
+                    created-by: $first: \$userId
+                    modified-by: $last: \$userId                    
             }
             {
                 $match: 
@@ -439,10 +445,23 @@ app.get \/list, (req, res)->
                     query-name: 1
                     creation-time: 1
                     modification-time: 1
+                    created-by: 1
+                    modified-by: 1
             }
         ]
     return die res, err if !!err
-    res.end JSON.stringify results
+
+    err, users <- query-database.collection \users .find {} .to-array
+    return die res, er if !!err 
+
+    res.end do 
+        JSON.stringify do 
+            queries 
+                |> map ({created-by, modified-by}:query) ->  
+                    {} <<< query <<< {
+                        created-by: (users |> find -> it._id.to-string! == created-by?.to-string!)
+                        modified-by: (users |> find -> it._id.to-string! == modified-by?.to-string!)
+                    }
     
 # save the code to mongodb
 app.post \/save, (req, res)->
@@ -477,7 +496,7 @@ app.post \/save, (req, res)->
 
         return die res, JSON.stringify {queries-in-between}
     
-    (err, records) <- query-database.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, status: true}, {w: 1}
+    err, records <- query-database.collection \queries .insert req.body <<< {creation-time: new Date!.get-time!, user-id: (new ObjectID req._passport.session.user), status: true}, {w: 1}
     return die res, err if !!err
 
     res.end JSON.stringify records.0

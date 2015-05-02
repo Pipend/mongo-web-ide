@@ -9,6 +9,7 @@
         <link rel="stylesheet" href="/public/styles/link-generator.css">
         <link rel="stylesheet" href="/public/styles/menu.css">
         <link rel="stylesheet" href="/public/styles/query-search.css">
+        <link rel="stylesheet" href="/public/styles/mongodb-info.css">
         <link rel="stylesheet" href="/node_modules/nvd3/nv.d3.css"/>
         <link rel="stylesheet" href="/public/styles/presentation-context.css">
         <link rel="icon" type="image/png" href="/public/images/favicon.png"/>
@@ -60,19 +61,7 @@
             <a class="button" id="share">Share</a>
             <a class="link" href="/logout">Logout</a>
         </div>
-        <div class="details" style="display: none; width: 400px">
-            <div>
-                <label>Server name</label>
-                <select id="server-name" name="server-name"></select>
-            </div>
-            <div>
-                <label>Database</label>
-                <select id="database" name="database"></select>
-            </div>
-            <div>
-                <label>Collection</label>
-                <select id="collection" name="collection"></select>
-            </div>
+        <div class="mongodb-info-container" style="display: none">
         </div>
         <div class="parameters" style="display: none">
             <div class="editor" id="parameters-editor"></div>

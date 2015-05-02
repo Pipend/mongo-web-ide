@@ -67,10 +67,8 @@ execute-mongo-database-query-func = (query-id, f, server-name, database, timeout
 
     set-timeout do 
         -> 
-            console.log \timeout, query-id
             poll[query-id]?.kill (kill-error, kill-result) -> 
-                return console.log \kill-error, kill-error if !!kill-error
-                console.log \kill-result, kill-result
+                return console.log \kill-error, kill-error if !!kill-error                
         timeout    
 
     err, result <- f db
@@ -186,7 +184,7 @@ export keywords = ({server-name, database, collection}:connection, callback) !--
             }
         ]
         , 10000
-    callback err, null if !!err
+    return callback err, null if !!err
 
     collection-keywords = 
         results 
@@ -213,7 +211,6 @@ export connections = ({connection, database}, callback) !-->
             # return the list of all databases for the given connection
             f = (db, callback) !-->
                 err, res <- db.admin!.listDatabases
-                console.log \db.admin!.listDatabases, err, res
                 return callback err, null if !!err
                 callback null, (res.databases |> map (.name))
 
@@ -238,6 +235,5 @@ export connections = ({connection, database}, callback) !-->
 
             callback null, connection: connection, database: database, collections: collections
 
-    console.log \result, result
     callback err, result
 
