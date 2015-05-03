@@ -388,3 +388,74 @@ plot multi-bar-horizontal `with-options` {
   }
 ]
 ```
+
+####**multi-chart**
+
+_Plottable_
+
+#### Example:
+```
+plot multi-chart `with-options` {
+    y-axis1: 
+        format: id
+        show: true
+    y-axis2: 
+        format: id
+        show: false
+}
+```
+#### Input Data: 
+```
+[
+    {
+        key: "times two"
+        y-axis: 1
+        values: [1 til 100] |> map -> [it, it * 2]
+        type: \line
+    }
+    {
+        key: "linear"
+        y-axis: 1
+        values: [1 til 100] |> map -> [it, it]
+        type: \line
+    }
+    {
+        key: "log"
+        y-axis: 2
+        values: [1 til 100] |> map -> [it, ln it+1]
+        type: \line
+    }
+    {
+        key: "ln"
+        y-axis: 2
+        values: [1 til 100] |> map -> [it, (ln it) + 1]
+        type: \line
+    }
+]
+```
+
+####**heat-map**
+
+_Plottable_
+
+#### Example:
+```
+plot heatmap `with-options` {
+    width: 320
+    height: 568
+    background: \http://www.iphoneness.com/wp-content/uploads/2011/01/leapseats.jpg
+}
+```
+#### Input Data:
+```
+{
+    max: 100
+    data: [0 til 100]
+        |> map ->
+            {
+                x: Math.random! * 320
+                y: Math.random! * 568
+                value: Math.random! * 100
+            }
+}
+```
