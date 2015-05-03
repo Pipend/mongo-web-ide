@@ -210,8 +210,6 @@ if \github in config.authentication.strategy
         {
             clientID: options.client-id
             client-secret: options.client-secret
-            callback-URL: 'http://127.0.0.1:3081/auth/github/callback'
-            redirect-uri: 'http://127.0.0.1:3081/auth/github/callback'
         }
         (accessToken, refreshToken, profile, done) ->
 
