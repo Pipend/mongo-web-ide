@@ -181,6 +181,8 @@ plottables = {
 
     heatmap: (require \./presentation-plottables/heatmap.ls) {Plottable, d3, plot}
 
+    multi-chart: (require \./presentation-plottables/multi-chart.ls) {Plottable, d3, nv, plot-chart, plot}
+
 } <<< (require \./presentation-plottables/layout.ls) {Plottable, d3, nv, plot-chart, plot}
 
 module.exports.get-presentation-context = ->

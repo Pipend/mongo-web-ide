@@ -28,7 +28,7 @@ get-scripts-to-browserify = (html-files, callback)->
             (err, data) <- fs.read-file file
             return callback err, null if !!err
             $ = cheerio.load "#{data}"
-            callback null, ($ "script[src]" 
+            callback null, ($ "script[src]:not([data-ignore-build])" 
                 |> map -> $ it .attr \src
                 |> filter -> !!it and it.trim!.length > 0
             )
