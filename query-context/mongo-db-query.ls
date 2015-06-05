@@ -142,6 +142,7 @@ export get-query-context = ->
         bucketize: bucketize
         object-id: ObjectID
         object-id-from-date: ObjectID . object-id-from-date 
+        u-sum: (s) -> $sum: $cond: [$gt: ["$#{s}", 0], 1, 0]
 
         # independent of any mongo operations
         date-from-object-id
@@ -163,7 +164,7 @@ export query = ({server-name, database, collection}:connection, query, parameter
         type = \aggregation
 
     #TODO: get timeout from config
-    execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 1200000, callback
+    execute-mongo-query query-id, type, server-name, database, collection, transpiled-code, 32000000, callback
 
     
 export cancel = (query-id, callback) !-->

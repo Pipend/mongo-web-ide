@@ -286,8 +286,8 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
 
     updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
 
-    req.connection.set-timeout config.timeout ? 120000
-    res.connection.set-timeout config.timeout ? 120000
+    req.connection.set-timeout config.timeout ? 1200000
+    res.connection.set-timeout config.timeout ? 1200000
 
     run = (func)->
         err, result <- func
@@ -419,8 +419,8 @@ app.get "/delete/branch/:branchId", (req, res)->
 # transpile livescript, execute the mongo aggregate query and return the results
 app.post \/execute, (req, res)->
 
-    req.connection.set-timeout config.timeout ? 120000
-    res.connection.set-timeout config.timeout ? 120000
+    req.connection.set-timeout config.timeout ? 1200000
+    res.connection.set-timeout config.timeout ? 1200000
 
     {server-name, database, collection, multi-query, query, cache, query-token, parameters = "{}"}:document = req.body    
 
