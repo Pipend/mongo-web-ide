@@ -284,7 +284,18 @@ app.get "/rest/:layer/:cache/:branchId/:queryId?", (req, res)->
     [err, parameters-object] = compile-and-execute-livescript (parameters or ""), {}
     return die res, "unable to parse \nparameters: #{parameters}\nerr: #{err}" if !!err
 
-    updated-document = document <<< {cache, parameters: parse-parameters req.query, parameters-object}
+    x-params = {}
+    process-x-param = (x-params, query, prop) ->
+        if !!req.query[query]
+            x-params[prop] = req.query[query]
+            delete req.query[query]
+        x-params
+
+    x-params := process-x-param x-params, \x-server-name, \serverName
+    x-params := process-x-param x-params, \x-database, \database
+    x-params := process-x-param x-params, \x-collection, \collection
+
+    updated-document = document <<< x-params <<< {cache, parameters: parse-parameters req.query, parameters-object}
 
     req.connection.set-timeout config.timeout ? 1200000
     res.connection.set-timeout config.timeout ? 1200000
